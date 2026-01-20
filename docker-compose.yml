@@ -1,0 +1,82 @@
+version: '3.8'
+services:
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth-service
+      - user-service
+
+  auth-service:
+    build: ./services/auth-service
+    ports:
+      - "3001:3001"
+
+  user-service:
+    build: ./services/user-service
+    ports:
+      - "3002:3002"
+
+  booking-service:
+    build: ./services/booking-service
+    ports:
+      - "3003:3003"
+
+  driver-service:
+    build: ./services/driver-service
+    ports:
+      - "3004:3004"
+
+  payment-service:
+    build: ./services/payment-service
+    ports:
+      - "3005:3005"
+
+  notification-service:
+    build: ./services/notification-service
+    ports:
+      - "3006:3006"
+
+  pricing-service:
+    build: ./services/pricing-service
+    ports:
+      - "3007:3007"
+
+  review-service:
+    build: ./services/review-service
+    ports:
+      - "3008:3008"
+
+  ride-service:
+    build: ./services/ride-service
+    ports:
+      - "3009:3009"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+
+  mongo:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+networks:
+  default:
+    driver: bridge
