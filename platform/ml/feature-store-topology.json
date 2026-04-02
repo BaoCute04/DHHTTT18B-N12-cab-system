@@ -1,0 +1,11 @@
+{
+  "platform": "ML Platform",
+  "featureStore": "Feature Store",
+  "training": "Model Training",
+  "serving": "Model Serving API",
+  "dataSources": [
+    "GPS / Location Data",
+    "Trip History",
+    "Ratings & Feedback"
+  ]
+}
