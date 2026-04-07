@@ -69,7 +69,12 @@ for (const upstream of topology.gateway.upstreams) {
 
     const headers = new Headers();
     for (const [key, value] of Object.entries(request.headers)) {
-      if (typeof value === "string" && key.toLowerCase() !== "host") {
+      // 🚨 SỬA TẠI ĐÂY: Loại bỏ 'host' và 'content-length'
+      if (
+        typeof value === "string" && 
+        key.toLowerCase() !== "host" && 
+        key.toLowerCase() !== "content-length" // Thêm dòng này
+      ) {
         headers.set(key, value);
       }
     }

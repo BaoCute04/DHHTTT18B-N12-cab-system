@@ -7,7 +7,7 @@ import { getSecurityProfileForService } from "../architecture/security-topology.
 import { getServiceManifest } from "../architecture/service-manifests.js";
 import { bootstrapBroker } from "./broker.js";
 
-export async function startService(serviceKey) {
+export async function startService(serviceKey, configureApp) {
   const manifest = getServiceManifest(serviceKey);
 
   if (!manifest) {
@@ -24,6 +24,9 @@ export async function startService(serviceKey) {
 
   app.use(express.json());
 
+  if (typeof configureApp === 'function') {
+    await configureApp(app, broker);
+  }
   app.get("/health", (_request, response) => {
     response.json({
       service: manifest.key,
@@ -74,6 +77,8 @@ export async function startService(serviceKey) {
     });
   });
 
+
+  // Bất kỳ route nào không khớp ở trên hoặc trong configureApp sẽ rơi vào 404
   app.use((_request, response) => {
     response.status(404).json({
       service: manifest.key,
