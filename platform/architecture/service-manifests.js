@@ -56,8 +56,8 @@ export const serviceManifests = {
     gatewayPath: "/api/v1/reviews",
     protocols: ["REST", "Kafka"],
     dataStores: ["postgresql"],
-    publishes: ["ReviewCreated"],
-    consumes: ["RideStatusChanged"]
+    publishes: [],
+    consumes: []
   },
   "driver-service": {
     key: "driver-service",
