@@ -38,6 +38,15 @@ export const httpSchemas = {
       currency: z.string().regex(/^[A-Z]{3}$/),
       paymentMethod: z.enum(["cash", "card", "wallet"])
     })
+    .strict(),
+  reviewCreate: z
+    .object({
+      rideId: uuidSchema,
+      userId: uuidSchema,
+      driverId: uuidSchema,
+      rating: z.number().int().min(1).max(5),
+      comment: z.string().max(1000).optional()
+    })
     .strict()
 };
 

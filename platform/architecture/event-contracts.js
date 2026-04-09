@@ -21,6 +21,10 @@ export const brokerTopology = {
     RideStatusChanged: {
       topic: "ride.status.changed",
       producer: "ride-service"
+    },
+    ReviewCreated: {
+      topic: "review.created",
+      producer: "review-service"
     }
   }
 };

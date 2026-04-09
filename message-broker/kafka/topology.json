@@ -26,6 +26,11 @@
       "name": "RideStatusChanged",
       "topic": "ride.status.changed",
       "producer": "ride-service"
+    },
+    {
+      "name": "ReviewCreated",
+      "topic": "review.created",
+      "producer": "review-service"
     }
   ]
 }
