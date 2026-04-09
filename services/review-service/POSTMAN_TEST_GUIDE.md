@@ -1,17 +1,24 @@
-# Hướng Dẫn Test Review Service bằng POSTMAN
+# Hướng Dẫn Kéo Thả Test Review Service trên POSTMAN
 
-Tài liệu này cung cấp sẵn các URL và nguyên mẫu dữ liệu dư chuẩn (`JSON body`) để bạn có thể copy/paste ngay vào Postman nhằm kiểm thử độc lập service đánh giá.
+Tài liệu này cung cấp hướng dẫn chi tiết từng bước (Step-by-Step) và dữ liệu cần nhập để kiểm thử độc lập service đánh giá.
 
 ⚠️ **Lưu ý quan trọng**: 
-Trước khi test, hãy chắc chắn service đang chạy bằng lệnh: `npm run dev:review` (Service sẽ chạy ở cổng `3106`).
+Dịch vụ của chúng ta hiện tại chạy **độc lập hoàn toàn** (không qua API Gateway). Hãy chắc chắn bạn đang để terminal chạy lệnh sau và hiện dòng chữ `[review-service] listening on port 3106`:
+```bash
+npm run dev:review
+```
 
 ---
 
 ## 1. POST - Tạo đánh giá mới (Thành công)
 **Mục đích:** Gửi một review hoàn chỉnh lên hệ thống.
-- **Method:** `POST`
-- **URL:** `http://localhost:3106/api/v1/reviews`
-- **Body (raw -> JSON):**
+
+**Các bước thao tác trong Postman:**
+1. Tạo một tab mới (dấu `+` hoặc `New Request`).
+2. Ở ô Method màu xanh, đổi `GET` thành **`POST`**.
+3. Ở thanh URL, dán vào: `http://localhost:3106/api/v1/reviews`
+4. Ở ngay dưới thanh URL, chọn tab **Body** -> Tích vào ô tròn **raw** -> Bấm vào chữ Text hiện ra và đổi thành **JSON**.
+5. Copy đoạn dữ liệu dưới đây dán vào khung soạn thảo:
 ```json
 {
   "rideId": "550e8400-e29b-41d4-a716-446655440001",
@@ -21,21 +28,20 @@ Trước khi test, hãy chắc chắn service đang chạy bằng lệnh: `npm r
   "comment": "Tài xế rất thân thiện, xe sạch sẽ!"
 }
 ```
+6. Bấm nút **Send** màu xanh dương. Bạn sẽ nhận về `201 Created` và thông báo báo thành công ở phía cửa sổ dưới.
 
 ---
 
 ## 2. POST - Xử lý chống Spam (Idempotency)
 **Mục đích:** Test cơ chế tự động chặn 1 khách hàng đánh giá 1 chuyến xe nhiều lần.
-- Thực hiện lại chính xác **Request số 1** một lần nữa (Bấm nút Send lần số 2).
-- Khác với lần đầu báo `201 Created`, lần 2 này hệ thống tự hiểu và trả về lỗi HTTP Code `409 Conflict`.
+- Vẫn ở Tab Request vừa nãy, bạn hãy **bấm nút Send thêm một lần nữa** mà không thay đổi bất kỳ ký tự nào.
+- Hệ thống sẽ trả về vòng chữ đỏ báo lỗi HTTP Code **`409 Conflict`** (Tức là API đã nhận diện bạn cố tình gửi lặp đánh giá spam và chặn lại ngay lập tức tại tầng service).
 
 ---
 
 ## 3. POST - Bẫy lỗi đánh giá quá quy định (Validation)
-**Mục đích:** Test màng bọc lọc dữ liệu ảo.
-- **Method:** `POST`
-- **URL:** `http://localhost:3106/api/v1/reviews`
-- **Body (raw -> JSON):**
+**Mục đích:** Test màng bọc lọc dữ liệu bị nhập sai thông số.
+- Vẫn cấu hình như bước 1, nhưng bạn đổi dữ liệu Body thành:
 ```json
 {
   "rideId": "111e8400-e29b-41d4-a716-446655440011",
@@ -45,26 +51,35 @@ Trước khi test, hãy chắc chắn service đang chạy bằng lệnh: `npm r
   "comment": "Đánh giá quá 5 sao để test bẫy lỗi"
 }
 ```
-*(Hệ thống sẽ báo cáo lỗi 400 Bad Request ngay lập tức do số rating vượt quá 5)*
+- Bấm **Send**. Hệ thống sẽ báo cáo lỗi **`400 Bad Request`** ngay do số lượng `rating` vượt quá giới hạn 5 sao.
 
 ---
 
 ## 4. GET - Xem tất cả đánh giá của 1 cuốc xe
-**Mục đích:** Khi màn hình app muốn hiển thị thông tin cuốc xe (Bao gồm đánh giá nếu có).
-- **Method:** `GET`
-- **URL:** `http://localhost:3106/api/v1/reviews/ride/550e8400-e29b-41d4-a716-446655440001`
-- **Lưu ý:** Chữ `550e8400...0001` là ID được copy từ dữ kiện số 1.
+**Mục đích:** Khi màn hình app muốn hiển thị thông tin cuốc xe (Bao gồm danh sách các đánh giá của chuyến này).
+- Tạo Tab `New Request` mới.
+- **Method:** Để nguyên là **`GET`**
+- **URL:** Dán dòng sau vào
+  `http://localhost:3106/api/v1/reviews/ride/550e8400-e29b-41d4-a716-446655440001`
+- Không cần nhập tab Body. Bấm **Send** và xem thông tin trả về dạng mảng lưới comment.
 
 ---
 
 ## 5. GET - Lấy toàn bộ đánh giá của 1 Bác Tài
-**Mục đích:** Hiển thị trong Profile cá nhân của Bác Tài. API này trả về mọi comment kèm tổng lược tính trung bình sẵn.
-- **Method:** `GET`
-- **URL:** `http://localhost:3106/api/v1/reviews/driver/550e8400-e29b-41d4-a716-446655440003`
+**Mục đích:** Hiển thị trong Profile cá nhân của Bác Tài.
+- Tạo Tab `New Request` mới. 
+- **Method:** **`GET`**
+- **URL:** 
+  `http://localhost:3106/api/v1/reviews/driver/550e8400-e29b-41d4-a716-446655440003`
+- Bấm **Send**.
+- *Thông tin thú vị:* API này trả về toàn bộ mảng data các đánh giá cụ thể nhưng ĐỒNG THỜI tự động trả về luôn số lần đánh giá `totalReviews` và gộp lại thành điểm `averageRating` chung.
 
 ---
 
-## 6. GET - Siêu truy vấn: Hỏi điểm Trung bình (Dành cho AI và Surge Pricing)
-**Mục đích:** Trả về con số điểm gọn nhẹ nhất để nạp vào hệ thống máy học (Machine learning Matching + Surge pricing). Tách riêng để tiết kiệm băng thông khi không cần load comment dài.
-- **Method:** `GET`
-- **URL:** `http://localhost:3106/api/v1/reviews/driver/550e8400-e29b-41d4-a716-446655440003/average`
+## 6. GET - Siêu truy vấn: Lấy Điểm Trung bình (Dành cho AI và Surge Pricing)
+**Mục đích:** Trả về duy nhất con số điểm của Bác Tài để nạp vào hệ thống máy học (Machine learning Matching). Tách riêng để siêu tiết kiệm băng thông khi không cần load comment dài dòng. Mọi công đoạn tính toán diễn ra nhúng trong service.
+- Tạo Tab `New Request` mới.
+- **Method:** **`GET`**
+- **URL:** 
+  `http://localhost:3106/api/v1/reviews/driver/550e8400-e29b-41d4-a716-446655440003/average`
+- Bấm **Send**.

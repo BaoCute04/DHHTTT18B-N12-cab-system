@@ -66,18 +66,6 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
         required: true,
         ttlMs: 24 * 60 * 60_000
       }
-    },
-    {
-      key: "review-create",
-      method: "POST",
-      path: "/api/v1/reviews",
-      allowedRoles: ["Customer", "Driver"],
-      rateLimit: createRatePolicy("review-create", 5, 60_000, "user-or-ip"),
-      validationSchema: httpSchemas.reviewCreate,
-      idempotency: {
-        required: true,
-        ttlMs: 24 * 60 * 60_000
-      }
     }
   ];
 
