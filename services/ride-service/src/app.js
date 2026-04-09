@@ -1,0 +1,93 @@
+/**
+ * Express App Configuration
+ * Sets up middleware and routes
+ */
+
+const express = require('express');
+const rideRoutes = require('./routes/ride.routes');
+const rideController = require('./controllers/ride.controller');
+
+/**
+ * Create and configure Express app
+ */
+function createApp() {
+  const app = express();
+
+  // ==================== MIDDLEWARE ====================
+
+  // Parse JSON bodies
+  app.use(express.json());
+
+  // Parse URL-encoded bodies
+  app.use(express.urlencoded({ extended: true }));
+
+  // Request logging middleware
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(
+        `[${new Date().toISOString()}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`
+      );
+    });
+    next();
+  });
+
+  // ==================== HEALTH CHECKS ====================
+
+  app.get('/health', (req, res) => {
+    res.json({
+      success: true,
+      service: 'ride-service',
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  app.get('/', (req, res) => {
+    res.json({
+      service: 'Ride Service',
+      version: '1.0.0',
+      endpoints: {
+        health: '/health',
+        api: '/api/v1/rides',
+        documentation: '/docs',
+      },
+    });
+  });
+
+  // ==================== API ROUTES ====================
+
+  // Ride API endpoints
+  app.use('/api/v1/rides', rideRoutes);
+
+  // User ride history endpoint
+  app.get('/api/v1/users/:userId/rides', rideController.getUserRides);
+
+  // ==================== ERROR HANDLING ====================
+
+  // 404 handler
+  app.use((req, res) => {
+    res.status(404).json({
+      success: false,
+      message: `Route ${req.method} ${req.path} not found`,
+      statusCode: 404,
+    });
+  });
+
+  // Global error handler
+  app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.message || 'Internal server error',
+      statusCode: err.statusCode || 500,
+    });
+  });
+
+  return app;
+}
+
+module.exports = {
+  createApp,
+};
