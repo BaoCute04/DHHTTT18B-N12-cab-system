@@ -18,15 +18,50 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
     familyKey: manifest.gatewayPath.replace("/api/v1/", ""),
     prefix: manifest.gatewayPath,
     serviceKey: manifest.key,
-    upstreamUrl: env[buildTargetEnvName(manifest.key)] || `http://localhost:${manifest.port}`,
+    upstreamUrl: env[buildTargetEnvName(manifest.key)] || `http://${manifest.key}:3000`,
     authRequired: true,
     allowedRoles: familyRoleMap[manifest.key] || [],
     timeoutMs: upstreamTimeoutMs
   }));
 
-  const authRatePolicy = createRatePolicy("auth", 5, 60_000, "ip");
+  const authRatePolicy = createRatePolicy("auth", 10000, 60_000, "ip");
 
   const policies = [
+    {
+      key: "auth-health",
+      method: "GET",
+      path: "/api/v1/auth/health",
+      authRequired: false,
+      serviceKey: "auth-service",
+      upstreamUrl: env.AUTH_SERVICE_URL
+    },
+    {
+      key: "protected-customer",
+      method: "GET",
+      path: "/api/v1/protected/customer",
+      authRequired: true,
+      allowedRoles: ["Customer", "Admin"],
+      serviceKey: "auth-service",
+      upstreamUrl: env.AUTH_SERVICE_URL
+    },
+    {
+      key: "protected-driver",
+      method: "GET",
+      path: "/api/v1/protected/driver",
+      authRequired: true,
+      allowedRoles: ["Driver", "Admin"],
+      serviceKey: "auth-service",
+      upstreamUrl: env.AUTH_SERVICE_URL
+    },
+    {
+      key: "protected-admin",
+      method: "GET",
+      path: "/api/v1/protected/admin",
+      authRequired: true,
+      allowedRoles: ["Admin"],
+      serviceKey: "auth-service",
+      upstreamUrl: env.AUTH_SERVICE_URL
+    },
     {
       key: "auth-login",
       method: "POST",
@@ -128,22 +163,22 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
   return {
     resolve(request) {
       const pathname = extractPathname(request.originalUrl || request.url || "/");
-      const family = families.find((item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`));
       const policy = policies.find((item) => item.method === request.method && item.path === pathname);
+      const family = families.find((item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`));
       const isApiRoute = pathname.startsWith("/api/v1/");
 
       return {
         key: policy?.key || family?.familyKey || (isApiRoute ? "unmapped-api-route" : "public"),
         isApiRoute,
         pathname,
-        serviceKey: family?.serviceKey || null,
-        upstreamUrl: family?.upstreamUrl || null,
+        serviceKey: policy?.serviceKey || family?.serviceKey || null,
+        upstreamUrl: policy?.upstreamUrl || family?.upstreamUrl || null,
         authRequired: policy?.authRequired ?? family?.authRequired ?? false,
         allowedRoles: policy?.allowedRoles ?? family?.allowedRoles ?? [],
         rateLimit: policy?.rateLimit ?? (pathname.startsWith("/api/v1/auth/") ? authRatePolicy : null),
         validationSchema: policy?.validationSchema ?? null,
         idempotency: policy?.idempotency ?? null,
-        timeoutMs: family?.timeoutMs || upstreamTimeoutMs
+        timeoutMs: policy?.timeoutMs || family?.timeoutMs || upstreamTimeoutMs
       };
     }
   };

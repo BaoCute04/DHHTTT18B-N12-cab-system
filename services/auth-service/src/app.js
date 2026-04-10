@@ -174,6 +174,9 @@ function createApp(options = {}) {
     });
 
     const authApiRouter = express.Router();
+    authApiRouter.get('/health', (req, res) => {
+        return res.status(200).json(buildSuccessEnvelope({ service: env.serviceName, status: 'ok', message: 'API V1 Auth is healthy' }, req.requestId));
+    });
     authApiRouter.use(createAdminAuthRoutes(adminAuthController));
     authApiRouter.use(createPublicAuthRoutes(otpAuthController));
     authApiRouter.use(createSessionRoutes(sessionController));
@@ -226,6 +229,10 @@ function createApp(options = {}) {
             .status(200)
             .json(buildSuccessEnvelope({ service: env.serviceName, message: 'Auth service online' }, req.requestId));
     });
+
+    app.get('/api/v1/protected/customer', (req, res) => res.json(buildSuccessEnvelope({ protected: true, role: 'customer' }, req.requestId)));
+    app.get('/api/v1/protected/driver', (req, res) => res.json(buildSuccessEnvelope({ protected: true, role: 'driver' }, req.requestId)));
+    app.get('/api/v1/protected/admin', (req, res) => res.json(buildSuccessEnvelope({ protected: true, role: 'admin' }, req.requestId)));
 
     app.use(errorHandlerMiddleware);
 

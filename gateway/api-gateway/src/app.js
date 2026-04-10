@@ -61,6 +61,10 @@ export async function createGatewayApp(options = {}) {
     );
   });
 
+  app.get("/api/v1/health", (request, response) => {
+    response.redirect("/health");
+  });
+
   app.get("/ready", async (request, response) => {
     const storeReady = await store.isReady();
     const ready = storeReady && jwtService.configured;

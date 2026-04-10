@@ -69,7 +69,7 @@ function loadEnv() {
         },
         otp: {
             ttlSeconds: parseInteger(process.env.AUTH_OTP_TTL_SECONDS, 300),
-            resendCooldownSeconds: parseInteger(process.env.AUTH_OTP_RESEND_COOLDOWN_SECONDS, 45),
+            resendCooldownSeconds: parseInteger(process.env.AUTH_OTP_RESEND_COOLDOWN_SECONDS, 1),
             maxVerifyAttempts: parseInteger(process.env.AUTH_OTP_MAX_VERIFY_ATTEMPTS, 5),
             lockWindowSeconds: parseInteger(process.env.AUTH_OTP_LOCK_WINDOW_SECONDS, 300),
         },
@@ -84,11 +84,11 @@ function loadEnv() {
             lockMinutes: parseInteger(process.env.AUTH_ADMIN_LOCK_MINUTES, 15),
         },
         rateLimits: {
-            otpRequestPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_OTP_REQUEST_PER_MINUTE, 10),
-            otpVerifyPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_OTP_VERIFY_PER_MINUTE, 20),
-            adminLoginPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_ADMIN_LOGIN_PER_MINUTE, 10),
-            mfaChallengePerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_MFA_CHALLENGE_PER_MINUTE, 20),
-            refreshPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_REFRESH_PER_MINUTE, 30),
+            otpRequestPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_OTP_REQUEST_PER_MINUTE, 1000),
+            otpVerifyPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_OTP_VERIFY_PER_MINUTE, 1000),
+            adminLoginPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_ADMIN_LOGIN_PER_MINUTE, 1000),
+            mfaChallengePerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_MFA_CHALLENGE_PER_MINUTE, 1000),
+            refreshPerMinute: parseInteger(process.env.AUTH_RATE_LIMIT_REFRESH_PER_MINUTE, 1000),
         },
     };
 }

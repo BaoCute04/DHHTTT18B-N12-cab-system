@@ -68,6 +68,12 @@ function createApp() {
         return updateRideLocationAndRespond(ride, req, res);
     });
 
+    app.use((req, _res, next) => {
+        console.log(`[RideService] ${req.method} ${req.url}`);
+        next();
+    });
+
+    app.use('/api/v1/ride', ridesApi);
     app.use('/api/v1/rides', ridesApi);
 
     app.get('/health', (_req, res) => res.json({ service: 'ride-service', status: 'ok' }));

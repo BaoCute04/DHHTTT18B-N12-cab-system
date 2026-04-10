@@ -12,6 +12,7 @@ export function createAuthMiddleware({ jwtService }) {
         return next();
       }
 
+      console.log('Authorization Header:', request.headers.authorization);
       const token = extractBearerToken(request.headers.authorization);
       if (!token) {
         throw new GatewayError(401, "UNAUTHORIZED", "Bearer token is required");

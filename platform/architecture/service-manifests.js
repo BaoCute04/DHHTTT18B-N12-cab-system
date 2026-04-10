@@ -83,7 +83,7 @@ export const serviceManifests = {
     key: "ride-service",
     displayName: "Ride Service",
     port: 3109,
-    gatewayPath: "/api/v1/rides",
+    gatewayPath: "/api/v1/ride",
     protocols: ["REST", "Kafka"],
     dataStores: ["mongodb", "redis"],
     publishes: ["RideStatusChanged"],

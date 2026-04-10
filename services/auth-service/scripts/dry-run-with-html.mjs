@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const CASE_DIR = path.join(ROOT, 'images', 'browser-cases');
 
-const BASE = process.env.GATEWAY_BASE_URL || 'http://127.0.0.1:3000';
+const BASE = process.env.GATEWAY_BASE_URL || 'http://127.0.0.1:3000/api/v1';
 const CUSTOMER = '+84900000001';
 const DRIVER = '+84900000002';
 const ADMIN_EMAIL = 'admin@cab.local';
