@@ -111,6 +111,35 @@ async function executeRequest({
   headers.set("x-gateway-service", gatewayKey);
   headers.set("x-upstream-service", routeConfig.serviceKey);
 
+  if (request.auth) {
+    if (request.auth.subject) {
+      headers.set("x-auth-subject-id", String(request.auth.subject));
+    }
+    if (request.auth.userId && !headers.has("x-auth-subject-id")) {
+      headers.set("x-auth-subject-id", String(request.auth.userId));
+    }
+    if (request.auth.role) {
+      headers.set("x-auth-role", String(request.auth.role));
+    }
+    const claims = request.auth.claims || {};
+    const accountId = claims.aid ?? claims.accountId;
+    if (accountId) {
+      headers.set("x-auth-account-id", String(accountId));
+    }
+    const sessionId = claims.sid ?? claims.sessionId;
+    if (sessionId) {
+      headers.set("x-auth-session-id", String(sessionId));
+    }
+    const roles = claims.roles;
+    if (Array.isArray(roles) && roles.length > 0) {
+      headers.set("x-auth-roles", roles.map(String).join(","));
+    }
+    const permissions = claims.permissions;
+    if (Array.isArray(permissions) && permissions.length > 0) {
+      headers.set("x-auth-permissions", permissions.map(String).join(","));
+    }
+  }
+
   const canHaveBody = !["GET", "HEAD"].includes(request.method);
   let body;
 

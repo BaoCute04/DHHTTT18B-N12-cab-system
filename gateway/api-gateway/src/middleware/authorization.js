@@ -11,7 +11,12 @@ export function createAuthorizationMiddleware() {
       return next();
     }
 
-    if (!request.auth?.role || !allowedRoles.includes(request.auth.role)) {
+    const authRole = request.auth?.role;
+    const normalizedAuthRole = typeof authRole === "string" ? authRole.toLowerCase() : "";
+    const allowed = allowedRoles.some(
+      (role) => String(role).toLowerCase() === normalizedAuthRole
+    );
+    if (!normalizedAuthRole || !allowed) {
       return next(new GatewayError(403, "FORBIDDEN", "You do not have permission to access this resource"));
     }
 

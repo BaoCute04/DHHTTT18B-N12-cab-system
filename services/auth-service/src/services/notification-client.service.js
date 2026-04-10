@@ -1,0 +1,58 @@
+function createNotificationClientService(options) {
+    const {
+        notificationBaseUrl,
+        requestIdHeader = 'x-request-id',
+        timeoutMs = 5000,
+        fetchImpl = fetch,
+    } = options;
+
+    return {
+        async sendOtp({ destination, channel, role, code, requestId }) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+            try {
+                const response = await fetchImpl(`${notificationBaseUrl}/internal/notifications/otp`, {
+                    method: 'POST',
+                    headers: {
+                        'content-type': 'application/json',
+                        [requestIdHeader]: requestId,
+                    },
+                    body: JSON.stringify({
+                        destination,
+                        channel,
+                        templateKey: `auth_otp_${role}`,
+                        variables: { code },
+                        message: `Your verification code is ${code}.`,
+                    }),
+                    signal: controller.signal,
+                });
+
+                const payload = await response.json().catch(() => null);
+                if (!response.ok || !payload || payload.success !== true) {
+                    const error = new Error('OTP delivery failed');
+                    error.statusCode = 503;
+                    error.code = 'OTP_DELIVERY_UNAVAILABLE';
+                    error.details = payload;
+                    throw error;
+                }
+
+                return payload.data;
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    const timeoutError = new Error('OTP delivery timed out');
+                    timeoutError.statusCode = 503;
+                    timeoutError.code = 'OTP_DELIVERY_TIMEOUT';
+                    throw timeoutError;
+                }
+                throw error;
+            } finally {
+                clearTimeout(timeout);
+            }
+        },
+    };
+}
+
+module.exports = {
+    createNotificationClientService,
+};

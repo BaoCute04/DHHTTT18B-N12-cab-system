@@ -1,5 +1,17 @@
 node_modules/
 dist/
 .env
+.env.docker
+.env.docker.example
 .DS_Store
 npm-debug.log*
+skills-lock.json
+.agents
+.sisyphus
+.skills
+.browser-cases
+# Browser case lockfile (local; do not publish)
+browser-cases
+skills
+services/auth-service/postman/_runtime-env.json
+packages
