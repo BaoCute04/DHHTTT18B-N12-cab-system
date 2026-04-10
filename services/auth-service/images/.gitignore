@@ -1,4 +1,0 @@
-# Local MFA setup pages contain secrets — do not commit
-admin-mfa-qr-setup.html
-admin-login-after-mfa-reset.json
-admin-mfa-qr-sau-reset.png

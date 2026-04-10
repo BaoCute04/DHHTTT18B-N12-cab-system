@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.env.*
 .env.docker
 .env.docker.example
 .DS_Store
@@ -15,3 +16,8 @@ browser-cases
 skills
 services/auth-service/postman/_runtime-env.json
 packages
+# Postman environment (local)
+*.postman_environment.json
+
+# Test images
+services/auth-service/images/
