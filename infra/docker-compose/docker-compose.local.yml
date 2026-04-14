@@ -12,6 +12,12 @@ services:
     ports:
       - "3000:3000"
     depends_on:
+      auth-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
       user-service:
         condition: service_started
       pricing-service:
@@ -20,9 +26,73 @@ services:
         condition: service_started
       driver-service:
         condition: service_started
+      notification-service:
+        condition: service_started
+      ride-service:
+        condition: service_started
     networks:
       - cab-edge
       - cab-services
+
+  payment-service:
+    build:
+      context: ../..
+      dockerfile: services/payment-service/Dockerfile
+    image: cab-payment-service:local
+    container_name: cab-payment-service
+    env_file:
+      - ../../services/payment-service/.env.docker
+    ports:
+      - "3102:3102"
+    depends_on:
+      payment-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - payment-data
+      - cab-broker
+
+  booking-service:
+    build:
+      context: ../..
+      dockerfile: services/booking-service/Dockerfile
+    image: cab-booking-service:local
+    container_name: cab-booking-service
+    env_file:
+      - ../../services/booking-service/.env.docker
+    ports:
+      - "3103:3103"
+    depends_on:
+      booking-mongodb:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - booking-data
+      - cab-broker
+
+  auth-service:
+    build:
+      context: ../..
+      dockerfile: services/auth-service/Dockerfile
+    image: cab-auth-service:local
+    container_name: cab-auth-service
+    env_file:
+      - ../../services/auth-service/.env.docker
+    ports:
+      - "3104:3104"
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - auth-data
+      - cab-broker
 
   pricing-service:
     build:
@@ -101,6 +171,86 @@ services:
       - driver-data
       - cab-broker
 
+  notification-service:
+    build:
+      context: ../..
+      dockerfile: services/notification-service/Dockerfile
+    image: cab-notification-service:local
+    container_name: cab-notification-service
+    env_file:
+      - ../../services/notification-service/.env.docker
+    ports:
+      - "3108:3108"
+    depends_on:
+      notification-mongodb:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - cab-services
+      - notification-data
+      - cab-broker
+
+  ride-service:
+    build:
+      context: ../..
+      dockerfile: services/ride-service/Dockerfile
+    image: cab-ride-service:local
+    container_name: cab-ride-service
+    env_file:
+      - ../../services/ride-service/.env.docker
+    ports:
+      - "3109:3109"
+    depends_on:
+      ride-mongodb:
+        condition: service_started
+      ride-redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - ride-data
+      - cab-broker
+
+  payment-postgres:
+    image: postgres:16-alpine
+    container_name: cab-payment-postgres
+    environment:
+      POSTGRES_DB: cab_booking_payment
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - cab_payment_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cab_booking_payment"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - payment-data
+
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: cab-auth-postgres
+    environment:
+      POSTGRES_DB: cab_booking_auth
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - cab_auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cab_booking_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - auth-data
+
   user-postgres:
     image: postgres:16-alpine
     container_name: cab-user-postgres
@@ -130,6 +280,16 @@ services:
     networks:
       - pricing-data
 
+  booking-mongodb:
+    image: mongo:7
+    container_name: cab-booking-mongodb
+    ports:
+      - "27020:27017"
+    volumes:
+      - cab_booking_mongodb_data:/data/db
+    networks:
+      - booking-data
+
   driver-mongodb:
     image: mongo:7
     container_name: cab-driver-mongodb
@@ -139,6 +299,36 @@ services:
       - cab_driver_mongodb_data:/data/db
     networks:
       - driver-data
+
+  notification-mongodb:
+    image: mongo:7
+    container_name: cab-notification-mongodb
+    ports:
+      - "27019:27017"
+    volumes:
+      - cab_notification_mongodb_data:/data/db
+    networks:
+      - notification-data
+
+  ride-mongodb:
+    image: mongo:7
+    container_name: cab-ride-mongodb
+    ports:
+      - "27021:27017"
+    volumes:
+      - cab_ride_mongodb_data:/data/db
+    networks:
+      - ride-data
+
+  ride-redis:
+    image: redis:7-alpine
+    container_name: cab-ride-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - cab_ride_redis_data:/data
+    networks:
+      - ride-data
 
   kafka:
     image: apache/kafka:3.7.0
@@ -164,16 +354,47 @@ services:
     networks:
       - cab-broker
 
+  kafka-init:
+    image: apache/kafka:3.7.0
+    container_name: cab-kafka-init
+    depends_on:
+      kafka:
+        condition: service_started
+    command: >
+      /bin/sh -c "
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic driver.assigned --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic driver.location.updated --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic ride.created --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic ride.assigned --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic ride.status.changed --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.failed --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.success --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.completed --partitions 1 --replication-factor 1
+      "
+    networks:
+      - cab-broker
+
 volumes:
+  cab_payment_postgres_data:
+  cab_auth_postgres_data:
   cab_user_postgres_data:
+  cab_booking_mongodb_data:
   cab_pricing_mongodb_data:
   cab_driver_mongodb_data:
+  cab_notification_mongodb_data:
+  cab_ride_mongodb_data:
+  cab_ride_redis_data:
   cab_kafka_data:
 
 networks:
   cab-edge:
   cab-services:
   cab-broker:
+  payment-data:
+  auth-data:
   user-data:
+  booking-data:
   pricing-data:
   driver-data:
+  notification-data:
+  ride-data:
