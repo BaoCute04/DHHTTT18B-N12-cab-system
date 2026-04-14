@@ -13,6 +13,8 @@ services:
         condition: service_started
       pricing-service:
         condition: service_started
+      review-service:
+        condition: service_started
 
   pricing-service:
     build:
@@ -26,6 +28,16 @@ services:
     depends_on:
       mongodb:
         condition: service_started
+
+  review-service:
+    build:
+      context: ../..
+      dockerfile: services/review-service/Dockerfile
+    container_name: cab-review-service
+    env_file:
+      - ../review-service/.env.docker
+    ports:
+      - "3106:3106"
 
   mongodb:
     image: mongo:7
