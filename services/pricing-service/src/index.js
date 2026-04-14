@@ -8,7 +8,7 @@ import pricingRoutes from './routes/pricingRoutes.js';
 import { logger } from './utils/logger.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3101;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/cab_booking_pricing';
 
 // Cấu hình thu thập Metrics mặc định cho Prometheus (RAM, CPU, Event Loop...)
