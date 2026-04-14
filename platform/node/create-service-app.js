@@ -7,7 +7,7 @@ import { getSecurityProfileForService } from "../architecture/security-topology.
 import { getServiceManifest } from "../architecture/service-manifests.js";
 import { bootstrapBroker } from "./broker.js";
 
-export async function startService(serviceKey) {
+export async function startService(serviceKey, configureApp) {
   const manifest = getServiceManifest(serviceKey);
 
   if (!manifest) {
@@ -45,18 +45,20 @@ export async function startService(serviceKey) {
         const serviceModule = await import(routeFile);
         if (typeof serviceModule.default === "function") {
           app.use(manifest.gatewayPath, serviceModule.default);
-          return;
+          return true;
         } else if (typeof serviceModule.register === "function") {
           serviceModule.register(app, manifest);
-          return;
+          return true;
         }
       } catch (error) {
         if (error.code !== "ERR_MODULE_NOT_FOUND" && !error.message.includes("Cannot find module")) {
           console.warn(`[${manifest.key}] failed to mount service routes:`, error.message);
-          return;
+          return false;
         }
       }
     }
+
+    return false;
   }
 
   app.get("/architecture", (_request, response) => {
@@ -76,23 +78,6 @@ export async function startService(serviceKey) {
     });
   });
 
-  app.get(manifest.gatewayPath, (_request, response) => {
-    response.json({
-      service: manifest.key,
-      displayName: manifest.displayName,
-      gatewayPath: manifest.gatewayPath,
-      protocols: manifest.protocols,
-      dataStores: manifest.dataStores,
-      producesEvents: manifest.publishes,
-      consumesEvents: manifest.consumes,
-      aiProfile,
-      realtimeFlows,
-      resilienceProfile,
-      securityProfile,
-      scope: "architecture-only"
-    });
-  });
-
   app.get(`${manifest.gatewayPath}/health`, (_request, response) => {
     response.json({
       service: manifest.key,
@@ -100,7 +85,28 @@ export async function startService(serviceKey) {
     });
   });
 
-  await attachServiceRoutes(app, manifest);
+  if (typeof configureApp === "function") {
+    await configureApp(app, broker, manifest);
+  } else {
+    app.get(manifest.gatewayPath, (_request, response) => {
+      response.json({
+        service: manifest.key,
+        displayName: manifest.displayName,
+        gatewayPath: manifest.gatewayPath,
+        protocols: manifest.protocols,
+        dataStores: manifest.dataStores,
+        producesEvents: manifest.publishes,
+        consumesEvents: manifest.consumes,
+        aiProfile,
+        realtimeFlows,
+        resilienceProfile,
+        securityProfile,
+        scope: "architecture-only"
+      });
+    });
+
+    await attachServiceRoutes(app, manifest);
+  }
 
   app.use((_request, response) => {
     response.status(404).json({

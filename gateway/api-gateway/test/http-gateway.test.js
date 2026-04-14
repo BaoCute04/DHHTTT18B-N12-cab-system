@@ -9,19 +9,23 @@ import { createGatewayApp } from "../src/app.js";
 
 const JWT_SECRET = "cab-booking-gateway-test-secret";
 const VALID_BOOKING_PAYLOAD = {
-  customerId: "11111111-1111-4111-8111-111111111111",
+  userId: "11111111-1111-4111-8111-111111111111",
   pickup: {
     lat: 10.762622,
     lng: 106.660172,
     address: "District 1"
   },
-  dropoff: {
+  destination: {
     lat: 10.77653,
     lng: 106.700981,
     address: "District 2"
   },
-  requestedAt: "2026-04-08T09:30:00.000Z",
-  estimatedFare: 125000
+  vehicleType: "car",
+  priceSnapshot: {
+    amount: 125000,
+    currency: "VND",
+    surgeMultiplier: 1
+  }
 };
 
 test("gateway injects tracing headers, proxies request, and normalizes upstream response", async (t) => {
@@ -166,7 +170,7 @@ test("booking creation requires Idempotency-Key and valid schema", async (t) => 
     .set("Authorization", `Bearer ${token}`)
     .set("Idempotency-Key", "booking-key-2")
     .send({
-      customerId: "not-a-uuid"
+      userId: "not-a-uuid"
     })
     .expect(400);
 
