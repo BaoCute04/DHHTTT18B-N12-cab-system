@@ -11,6 +11,29 @@ services:
     depends_on:
       user-service:
         condition: service_started
+      pricing-service:
+        condition: service_started
+
+  pricing-service:
+    build:
+      context: ../..
+      dockerfile: services/pricing-service/Dockerfile
+    container_name: cab-pricing-service
+    env_file:
+      - ../pricing-service/.env.docker
+    ports:
+      - "3101:3101"
+    depends_on:
+      mongodb:
+        condition: service_started
+
+  mongodb:
+    image: mongo:7
+    container_name: cab-pricing-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - cab_pricing_mongodb_data:/data/db
 
   postgres:
     image: postgres:16-alpine
@@ -44,3 +67,4 @@ services:
 
 volumes:
   cab_user_postgres_data:
+  cab_pricing_mongodb_data:
