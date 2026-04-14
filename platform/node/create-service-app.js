@@ -33,6 +33,32 @@ export async function startService(serviceKey) {
     });
   });
 
+  async function attachServiceRoutes(app, manifest) {
+    const routeCandidates = [
+      `../../services/${manifest.key}/src/routes/index.js`,
+      `../../services/${manifest.key}/src/routes.js`
+    ];
+
+    for (const candidate of routeCandidates) {
+      const routeFile = new URL(candidate, import.meta.url).href;
+      try {
+        const serviceModule = await import(routeFile);
+        if (typeof serviceModule.default === "function") {
+          app.use(manifest.gatewayPath, serviceModule.default);
+          return;
+        } else if (typeof serviceModule.register === "function") {
+          serviceModule.register(app, manifest);
+          return;
+        }
+      } catch (error) {
+        if (error.code !== "ERR_MODULE_NOT_FOUND" && !error.message.includes("Cannot find module")) {
+          console.warn(`[${manifest.key}] failed to mount service routes:`, error.message);
+          return;
+        }
+      }
+    }
+  }
+
   app.get("/architecture", (_request, response) => {
     response.json({
       ...manifest,
@@ -73,6 +99,8 @@ export async function startService(serviceKey) {
       message: `${manifest.displayName} is reachable through the overall architecture`
     });
   });
+
+  await attachServiceRoutes(app, manifest);
 
   app.use((_request, response) => {
     response.status(404).json({
