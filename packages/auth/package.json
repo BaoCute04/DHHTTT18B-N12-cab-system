@@ -1,0 +1,9 @@
+{
+  "name": "@cab/auth",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "jose": "^5.9.6"
+  }
+}
