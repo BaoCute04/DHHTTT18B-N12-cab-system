@@ -8,6 +8,13 @@ const coordinatesSchema = z.object({
   lng: z.number().min(-180).max(180),
   address: z.string().min(3).max(250).optional()
 });
+const priceSnapshotSchema = z
+  .object({
+    amount: moneyIntegerSchema,
+    currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+    surgeMultiplier: z.number().min(1).optional()
+  })
+  .strict();
 
 export const httpSchemas = {
   login: z
@@ -24,11 +31,11 @@ export const httpSchemas = {
     .strict(),
   bookingCreate: z
     .object({
-      customerId: uuidSchema,
+      userId: uuidSchema,
       pickup: coordinatesSchema,
-      dropoff: coordinatesSchema,
-      requestedAt: isoDateSchema,
-      estimatedFare: moneyIntegerSchema
+      destination: coordinatesSchema,
+      vehicleType: z.enum(["bike", "car", "car_plus"]),
+      priceSnapshot: priceSnapshotSchema
     })
     .strict(),
   paymentCreate: z
