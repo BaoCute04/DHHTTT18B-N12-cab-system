@@ -99,7 +99,7 @@ async function executeRequest({
     }
 
     const normalizedKey = key.toLowerCase();
-    if (["host", "content-length", "connection"].includes(normalizedKey)) {
+    if (HOP_BY_HOP_HEADERS.has(normalizedKey)) {
       continue;
     }
 
@@ -146,6 +146,19 @@ async function executeRequest({
     clearTimeout(timeout);
   }
 }
+
+const HOP_BY_HOP_HEADERS = new Set([
+  "host",
+  "connection",
+  "content-length",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade"
+]);
 
 function parseBody(rawBody, contentType) {
   if (!rawBody) {

@@ -11,6 +11,6 @@ RUN npm ci --workspace @cab/user-service --include-workspace-root
 
 WORKDIR /app/services/user-service
 
-ENV PORT=3000
+ENV PORT=3105
 
 CMD ["npm", "run", "start"]
