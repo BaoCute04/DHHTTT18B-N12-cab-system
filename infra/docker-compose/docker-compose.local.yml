@@ -1,0 +1,179 @@
+name: cab-booking-local
+
+services:
+  api-gateway:
+    build:
+      context: ../..
+      dockerfile: gateway/api-gateway/Dockerfile
+    image: cab-api-gateway:local
+    container_name: cab-api-gateway
+    env_file:
+      - ../../gateway/api-gateway/.env.docker
+    ports:
+      - "3000:3000"
+    depends_on:
+      user-service:
+        condition: service_started
+      pricing-service:
+        condition: service_started
+      review-service:
+        condition: service_started
+      driver-service:
+        condition: service_started
+    networks:
+      - cab-edge
+      - cab-services
+
+  pricing-service:
+    build:
+      context: ../..
+      dockerfile: services/pricing-service/Dockerfile
+    image: cab-pricing-service:local
+    container_name: cab-pricing-service
+    env_file:
+      - ../../services/pricing-service/.env.docker
+    ports:
+      - "3101:3101"
+    depends_on:
+      pricing-mongodb:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - pricing-data
+      - cab-broker
+
+  user-service:
+    build:
+      context: ../..
+      dockerfile: services/user-service/Dockerfile
+    image: cab-user-service:local
+    container_name: cab-user-service
+    env_file:
+      - ../../services/user-service/.env.docker
+    ports:
+      - "3105:3105"
+    depends_on:
+      user-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - user-data
+      - cab-broker
+
+  review-service:
+    build:
+      context: ../..
+      dockerfile: services/review-service/Dockerfile
+    image: cab-review-service:local
+    container_name: cab-review-service
+    env_file:
+      - ../../services/review-service/.env.docker
+    ports:
+      - "3106:3106"
+    depends_on:
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - cab-broker
+
+  driver-service:
+    build:
+      context: ../..
+      dockerfile: services/driver-service/Dockerfile
+    image: cab-driver-service:local
+    container_name: cab-driver-service
+    env_file:
+      - ../../services/driver-service/.env.docker
+    ports:
+      - "3107:3107"
+    depends_on:
+      driver-mongodb:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - driver-data
+      - cab-broker
+
+  user-postgres:
+    image: postgres:16-alpine
+    container_name: cab-user-postgres
+    environment:
+      POSTGRES_DB: cab_booking_user
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - cab_user_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cab_booking_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - user-data
+
+  pricing-mongodb:
+    image: mongo:7
+    container_name: cab-pricing-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - cab_pricing_mongodb_data:/data/db
+    networks:
+      - pricing-data
+
+  driver-mongodb:
+    image: mongo:7
+    container_name: cab-driver-mongodb
+    ports:
+      - "27018:27017"
+    volumes:
+      - cab_driver_mongodb_data:/data/db
+    networks:
+      - driver-data
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: cab-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - "9092:9092"
+    volumes:
+      - cab_kafka_data:/tmp/kraft-combined-logs
+    networks:
+      - cab-broker
+
+volumes:
+  cab_user_postgres_data:
+  cab_pricing_mongodb_data:
+  cab_driver_mongodb_data:
+  cab_kafka_data:
+
+networks:
+  cab-edge:
+  cab-services:
+  cab-broker:
+  user-data:
+  pricing-data:
+  driver-data:
