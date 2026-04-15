@@ -15,7 +15,7 @@ export const serviceManifests = {
     port: 3102,
     gatewayPath: "/api/v1/payments",
     protocols: ["REST", "Kafka"],
-    dataStores: ["postgresql"],
+    dataStores: ["mongodb"],
     publishes: ["PaymentSuccess"],
     consumes: []
   },
