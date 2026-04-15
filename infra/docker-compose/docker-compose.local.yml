@@ -45,8 +45,8 @@ services:
     ports:
       - "3102:3102"
     depends_on:
-      payment-postgres:
-        condition: service_healthy
+      payment-mongodb:
+        condition: service_started
       kafka:
         condition: service_started
     networks:
@@ -213,22 +213,13 @@ services:
       - ride-data
       - cab-broker
 
-  payment-postgres:
-    image: postgres:16-alpine
-    container_name: cab-payment-postgres
-    environment:
-      POSTGRES_DB: cab_booking_payment
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+  payment-mongodb:
+    image: mongo:7
+    container_name: cab-payment-mongodb
     ports:
-      - "5434:5432"
+      - "27022:27017"
     volumes:
-      - cab_payment_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d cab_booking_payment"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - cab_payment_mongodb_data:/data/db
     networks:
       - payment-data
 
@@ -375,7 +366,7 @@ services:
       - cab-broker
 
 volumes:
-  cab_payment_postgres_data:
+  cab_payment_mongodb_data:
   cab_auth_postgres_data:
   cab_user_postgres_data:
   cab_booking_mongodb_data:

@@ -40,10 +40,11 @@ export const httpSchemas = {
     .strict(),
   paymentCreate: z
     .object({
-      bookingId: uuidSchema,
+      rideId: uuidSchema,
+      userId: uuidSchema,
       amount: moneyIntegerSchema,
-      currency: z.string().regex(/^[A-Z]{3}$/),
-      paymentMethod: z.enum(["cash", "card", "wallet"])
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+      method: z.enum(["cash", "card", "wallet", "momo", "vnpay"])
     })
     .strict()
 };
