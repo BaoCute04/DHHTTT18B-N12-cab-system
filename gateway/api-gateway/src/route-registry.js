@@ -28,6 +28,13 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
 
   const policies = [
     {
+      key: "auth-health",
+      method: "GET",
+      path: "/api/v1/auth/health",
+      authRequired: false,
+      rateLimit: null
+    },
+    {
       key: "auth-login",
       method: "POST",
       path: "/api/v1/auth/login",
@@ -36,12 +43,76 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
       validationSchema: httpSchemas.login
     },
     {
+      key: "auth-otp-request",
+      method: "POST",
+      path: "/api/v1/auth/login/otp/request",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authOtpRequest
+    },
+    {
+      key: "auth-otp-verify",
+      method: "POST",
+      path: "/api/v1/auth/login/otp/verify",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authOtpVerify
+    },
+    {
+      key: "auth-admin-login",
+      method: "POST",
+      path: "/api/v1/auth/login/admin",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authAdminLogin
+    },
+    {
+      key: "auth-mfa-challenge",
+      method: "POST",
+      path: "/api/v1/auth/mfa/challenge",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authMfaChallenge
+    },
+    {
       key: "auth-refresh",
       method: "POST",
       path: "/api/v1/auth/refresh",
       authRequired: false,
       rateLimit: authRatePolicy,
       validationSchema: httpSchemas.refresh
+    },
+    {
+      key: "auth-oauth-token",
+      method: "POST",
+      path: "/api/v1/auth/oauth/token",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authOauthToken
+    },
+    {
+      key: "auth-logout",
+      method: "POST",
+      path: "/api/v1/auth/logout",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authLogout
+    },
+    {
+      key: "auth-oauth-revoke",
+      method: "POST",
+      path: "/api/v1/auth/oauth/revoke",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authOauthRevoke
+    },
+    {
+      key: "auth-logout-all",
+      method: "POST",
+      path: "/api/v1/auth/logout-all",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authLogout
     },
     {
       key: "booking-create",
