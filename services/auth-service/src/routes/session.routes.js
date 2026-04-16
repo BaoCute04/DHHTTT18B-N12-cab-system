@@ -18,7 +18,7 @@ function createSessionRoutes(sessionController) {
     router.post('/logout', authRateLimitMiddleware, validationMiddleware(logoutSchema), sessionController.logout);
     router.post('/oauth/revoke', authRateLimitMiddleware, validationMiddleware(oauthRevokeSchema), sessionController.oauthRevoke);
     router.post('/logout-all', authRateLimitMiddleware, validationMiddleware(logoutAllSchema), sessionController.logoutAll);
-    router.get('/auth/me', authRateLimitMiddleware, sessionController.me);
+    router.get('/me', authRateLimitMiddleware, sessionController.me);
 
     return router;
 }

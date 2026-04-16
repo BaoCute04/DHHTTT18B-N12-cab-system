@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
 import test from "node:test";
-import { createSecretKey } from "node:crypto";
 import request from "supertest";
-import { SignJWT } from "jose";
+import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { createGatewayApp } from "../src/app.js";
 
-const JWT_SECRET = "cab-booking-gateway-test-secret";
+const ISSUER = "cab-auth-service";
+const AUDIENCE = "cab-api";
 const VALID_BOOKING_PAYLOAD = {
   userId: "11111111-1111-4111-8111-111111111111",
   pickup: {
@@ -28,7 +28,8 @@ const VALID_BOOKING_PAYLOAD = {
   }
 };
 
-test("gateway injects tracing headers, proxies request, and normalizes upstream response", async (t) => {
+test("gateway verifies RS256 token via Auth JWKS, validates /me, then proxies protected request", async (t) => {
+  const auth = await createAuthServer();
   const upstream = await createUpstreamServer(({ req, json, sendJson }) => {
     sendJson(200, {
       receivedHeaders: req.headers,
@@ -36,21 +37,24 @@ test("gateway injects tracing headers, proxies request, and normalizes upstream 
       body: json
     });
   });
-  t.after(async () => upstream.close());
+  t.after(async () => {
+    await upstream.close();
+    await auth.close();
+  });
 
   const runtime = await createGatewayApp({
     env: createEnv({
+      AUTH_SERVICE_URL: auth.url,
       USER_SERVICE_URL: upstream.url
     }),
     storeMode: "memory"
   });
   t.after(async () => runtime.close());
 
-  const token = await createToken({
+  const token = await auth.signToken({
     sub: "customer-1",
-    userId: "customer-1",
-    role: "Customer",
-    clientType: "customer-app"
+    role: "customer",
+    roles: ["customer"]
   });
 
   const response = await request(runtime.app)
@@ -65,6 +69,8 @@ test("gateway injects tracing headers, proxies request, and normalizes upstream 
   assert.equal(response.body.data.query.view, "full");
   assert.equal(response.body.data.receivedHeaders["x-correlation-id"], "corr-123");
   assert.equal(response.body.data.receivedHeaders["x-request-id"], response.body.meta.requestId);
+  assert.equal(auth.meCalls.length, 1);
+  assert.equal(auth.meCalls[0].headers["x-correlation-id"], "corr-123");
 });
 
 test("protected routes reject missing bearer token", async (t) => {
@@ -80,27 +86,158 @@ test("protected routes reject missing bearer token", async (t) => {
   assert.equal(response.body.message, "Bearer token is required");
 });
 
-test("RBAC blocks drivers from creating bookings", async (t) => {
+test("gateway rejects invalid RS256 signature before calling auth /me", async (t) => {
+  const auth = await createAuthServer();
+  const runtime = await createGatewayApp({
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url
+    }),
+    storeMode: "memory"
+  });
+  t.after(async () => {
+    await runtime.close();
+    await auth.close();
+  });
+
+  const token = await createUntrustedToken({
+    sub: "customer-1",
+    role: "customer",
+    roles: ["customer"]
+  });
+
+  const response = await request(runtime.app)
+    .get("/api/v1/users/profile")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(401);
+
+  assert.equal(response.body.message, "Access token is invalid");
+  assert.equal(auth.meCalls.length, 0);
+});
+
+test("gateway rejects expired RS256 access token", async (t) => {
+  const auth = await createAuthServer();
+  const runtime = await createGatewayApp({
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url
+    }),
+    storeMode: "memory"
+  });
+  t.after(async () => {
+    await runtime.close();
+    await auth.close();
+  });
+
+  const token = await auth.signToken(
+    {
+      sub: "customer-1",
+      role: "customer",
+      roles: ["customer"]
+    },
+    {
+      expirationTime: Math.floor(Date.now() / 1000) - 10
+    }
+  );
+
+  const response = await request(runtime.app)
+    .get("/api/v1/users/profile")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(401);
+
+  assert.equal(response.body.message, "Access token has expired");
+  assert.equal(auth.meCalls.length, 0);
+});
+
+test("gateway returns 401 when auth /me rejects token", async (t) => {
+  const auth = await createAuthServer({
+    meStatus: 401,
+    meBody: {
+      success: false,
+      message: "Access token is invalid or expired"
+    }
+  });
+  const runtime = await createGatewayApp({
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url
+    }),
+    storeMode: "memory"
+  });
+  t.after(async () => {
+    await runtime.close();
+    await auth.close();
+  });
+
+  const token = await auth.signToken({
+    sub: "customer-1",
+    role: "customer",
+    roles: ["customer"]
+  });
+
+  const response = await request(runtime.app)
+    .get("/api/v1/users/profile")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(401);
+
+  assert.equal(response.body.message, "Access token is invalid or expired");
+});
+
+test("gateway fails closed with 503 when auth /me is unavailable", async (t) => {
+  const auth = await createAuthServer({
+    meStatus: 500,
+    meBody: {
+      success: false,
+      message: "Auth service error"
+    }
+  });
+  const runtime = await createGatewayApp({
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url
+    }),
+    storeMode: "memory"
+  });
+  t.after(async () => {
+    await runtime.close();
+    await auth.close();
+  });
+
+  const token = await auth.signToken({
+    sub: "customer-1",
+    role: "customer",
+    roles: ["customer"]
+  });
+
+  const response = await request(runtime.app)
+    .get("/api/v1/users/profile")
+    .set("Authorization", `Bearer ${token}`)
+    .expect(503);
+
+  assert.equal(response.body.message, "Auth service failed to validate access token");
+});
+
+test("RBAC blocks drivers from creating bookings after auth /me context is resolved", async (t) => {
+  const auth = await createAuthServer();
   const upstream = await createUpstreamServer(({ sendJson }) => {
     sendJson(201, {
       bookingId: "booking-1"
     });
   });
-  t.after(async () => upstream.close());
+  t.after(async () => {
+    await upstream.close();
+    await auth.close();
+  });
 
   const runtime = await createGatewayApp({
     env: createEnv({
+      AUTH_SERVICE_URL: auth.url,
       BOOKING_SERVICE_URL: upstream.url
     }),
     storeMode: "memory"
   });
   t.after(async () => runtime.close());
 
-  const token = await createToken({
+  const token = await auth.signToken({
     sub: "driver-1",
-    userId: "driver-1",
-    role: "Driver",
-    clientType: "driver-app"
+    role: "driver",
+    roles: ["driver"]
   });
 
   const response = await request(runtime.app)
@@ -113,37 +250,61 @@ test("RBAC blocks drivers from creating bookings", async (t) => {
   assert.equal(response.body.message, "You do not have permission to access this resource");
 });
 
-test("auth endpoints are rate limited at five requests per minute", async (t) => {
-  const upstream = await createUpstreamServer(({ sendJson }) => {
-    sendJson(200, {
-      token: "ok"
-    });
-  });
-  t.after(async () => upstream.close());
-
+test("auth lifecycle routes remain public and proxy to auth-service", async (t) => {
+  const auth = await createAuthServer();
   const runtime = await createGatewayApp({
     env: createEnv({
-      AUTH_SERVICE_URL: upstream.url
+      AUTH_SERVICE_URL: auth.url
     }),
     storeMode: "memory"
   });
-  t.after(async () => runtime.close());
+  t.after(async () => {
+    await runtime.close();
+    await auth.close();
+  });
+
+  const response = await request(runtime.app)
+    .post("/api/v1/auth/login/otp/request")
+    .send({
+      destination: "customer@example.com",
+      role: "customer",
+      channel: "email"
+    })
+    .expect(202);
+
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.data.authRoute, "/api/v1/auth/login/otp/request");
+  assert.equal(auth.meCalls.length, 0);
+});
+
+test("auth endpoints are rate limited at five requests per minute", async (t) => {
+  const auth = await createAuthServer();
+  const runtime = await createGatewayApp({
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url
+    }),
+    storeMode: "memory"
+  });
+  t.after(async () => {
+    await runtime.close();
+    await auth.close();
+  });
 
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     await request(runtime.app)
-      .post("/api/v1/auth/login")
+      .post("/api/v1/auth/login/otp/request")
       .send({
-        identifier: "demo@example.com",
-        password: "password123"
+        destination: "demo@example.com",
+        role: "customer"
       })
-      .expect(200);
+      .expect(202);
   }
 
   const blocked = await request(runtime.app)
-    .post("/api/v1/auth/login")
+    .post("/api/v1/auth/login/otp/request")
     .send({
-      identifier: "demo@example.com",
-      password: "password123"
+      destination: "demo@example.com",
+      role: "customer"
     })
     .expect(429);
 
@@ -152,17 +313,22 @@ test("auth endpoints are rate limited at five requests per minute", async (t) =>
 });
 
 test("booking creation requires Idempotency-Key and valid schema", async (t) => {
+  const auth = await createAuthServer();
   const runtime = await createGatewayApp({
-    env: createEnv(),
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url
+    }),
     storeMode: "memory"
   });
-  t.after(async () => runtime.close());
+  t.after(async () => {
+    await runtime.close();
+    await auth.close();
+  });
 
-  const token = await createToken({
+  const token = await auth.signToken({
     sub: "customer-1",
-    userId: "customer-1",
-    role: "Customer",
-    clientType: "customer-app"
+    role: "customer",
+    roles: ["customer"]
   });
 
   const invalidSchemaResponse = await request(runtime.app)
@@ -187,6 +353,7 @@ test("booking creation requires Idempotency-Key and valid schema", async (t) => 
 
 test("booking idempotency returns cached response and avoids duplicate upstream calls", async (t) => {
   let callCount = 0;
+  const auth = await createAuthServer();
   const upstream = await createUpstreamServer(({ sendJson }) => {
     callCount += 1;
     sendJson(201, {
@@ -194,21 +361,24 @@ test("booking idempotency returns cached response and avoids duplicate upstream 
       sequence: callCount
     });
   });
-  t.after(async () => upstream.close());
+  t.after(async () => {
+    await upstream.close();
+    await auth.close();
+  });
 
   const runtime = await createGatewayApp({
     env: createEnv({
+      AUTH_SERVICE_URL: auth.url,
       BOOKING_SERVICE_URL: upstream.url
     }),
     storeMode: "memory"
   });
   t.after(async () => runtime.close());
 
-  const token = await createToken({
+  const token = await auth.signToken({
     sub: "customer-1",
-    userId: "customer-1",
-    role: "Customer",
-    clientType: "customer-app"
+    role: "customer",
+    roles: ["customer"]
   });
 
   const first = await request(runtime.app)
@@ -232,6 +402,7 @@ test("booking idempotency returns cached response and avoids duplicate upstream 
 
 test("gateway returns timeout then opens circuit breaker for the upstream", async (t) => {
   let attempts = 0;
+  const auth = await createAuthServer();
   const upstream = await createUpstreamServer(async ({ sendJson }) => {
     attempts += 1;
     await sleep(40);
@@ -239,26 +410,27 @@ test("gateway returns timeout then opens circuit breaker for the upstream", asyn
       ok: true
     });
   });
-  t.after(async () => upstream.close());
+  t.after(async () => {
+    await upstream.close();
+    await auth.close();
+  });
 
   const runtime = await createGatewayApp({
-    env: createEnv(
-      {
-        USER_SERVICE_URL: upstream.url,
-        UPSTREAM_TIMEOUT_MS: "10",
-        CIRCUIT_BREAKER_FAILURE_THRESHOLD: "1",
-        CIRCUIT_BREAKER_RESET_TIMEOUT_MS: "5000"
-      }
-    ),
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url,
+      USER_SERVICE_URL: upstream.url,
+      UPSTREAM_TIMEOUT_MS: "10",
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: "1",
+      CIRCUIT_BREAKER_RESET_TIMEOUT_MS: "5000"
+    }),
     storeMode: "memory"
   });
   t.after(async () => runtime.close());
 
-  const token = await createToken({
+  const token = await auth.signToken({
     sub: "customer-1",
-    userId: "customer-1",
-    role: "Customer",
-    clientType: "customer-app"
+    role: "customer",
+    roles: ["customer"]
   });
 
   const first = await request(runtime.app)
@@ -278,7 +450,9 @@ test("gateway returns timeout then opens circuit breaker for the upstream", asyn
 
 function createEnv(overrides = {}) {
   return {
-    JWT_ACCESS_SECRET: JWT_SECRET,
+    JWT_ISSUER: ISSUER,
+    JWT_AUDIENCE: AUDIENCE,
+    AUTH_VALIDATION_TIMEOUT_MS: "5000",
     UPSTREAM_TIMEOUT_MS: "5000",
     CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5",
     CIRCUIT_BREAKER_RESET_TIMEOUT_MS: "30000",
@@ -286,12 +460,107 @@ function createEnv(overrides = {}) {
   };
 }
 
-async function createToken(claims) {
-  return new SignJWT(claims)
-    .setProtectedHeader({ alg: "HS256" })
+async function createAuthServer({ meStatus = 200, meBody } = {}) {
+  const keyPair = await generateKeyPair("RS256");
+  const kid = "auth-test-key";
+  const publicJwk = await exportJWK(keyPair.publicKey);
+  publicJwk.kid = kid;
+  publicJwk.alg = "RS256";
+  publicJwk.use = "sig";
+  const meCalls = [];
+
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, "http://auth.local");
+
+    if (url.pathname === "/.well-known/jwks.json") {
+      return sendJson(res, 200, {
+        keys: [publicJwk]
+      });
+    }
+
+    if (url.pathname === "/api/v1/auth/me") {
+      meCalls.push({
+        headers: req.headers
+      });
+
+      if (meStatus !== 200) {
+        return sendJson(res, meStatus, meBody || { message: "Auth context failed" });
+      }
+
+      const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+      const payload = token ? decodeJwt(token) : {};
+      return sendJson(res, 200, {
+        success: true,
+        data: {
+          subjectId: payload.sub,
+          accountId: payload.aid || "account-1",
+          sessionId: payload.sid || "session-1",
+          role: payload.role,
+          roles: payload.roles || (payload.role ? [payload.role] : []),
+          scopes: payload.scope ? String(payload.scope).split(/\s+/).filter(Boolean) : [],
+          permissions: payload.permissions || []
+        },
+        meta: {
+          requestId: req.headers["x-request-id"] || null
+        }
+      });
+    }
+
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const rawBody = Buffer.concat(chunks).toString("utf8");
+    const json = rawBody ? JSON.parse(rawBody) : null;
+
+    return sendJson(res, req.method === "POST" ? 202 : 200, {
+      success: true,
+      data: {
+        authRoute: url.pathname,
+        body: json
+      }
+    });
+  });
+
+  server.listen(0);
+  await once(server, "listening");
+  const address = server.address();
+
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    meCalls,
+    signToken(claims, options = {}) {
+      return new SignJWT({
+        typ: "access",
+        ...claims
+      })
+        .setProtectedHeader({ alg: "RS256", kid, typ: "JWT" })
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setSubject(claims.sub)
+        .setIssuedAt()
+        .setExpirationTime(options.expirationTime ?? "15m")
+        .sign(keyPair.privateKey);
+    },
+    close() {
+      return closeServer(server);
+    }
+  };
+}
+
+async function createUntrustedToken(claims) {
+  const keyPair = await generateKeyPair("RS256");
+  return new SignJWT({
+    typ: "access",
+    ...claims
+  })
+    .setProtectedHeader({ alg: "RS256", kid: "auth-test-key", typ: "JWT" })
+    .setIssuer(ISSUER)
+    .setAudience(AUDIENCE)
+    .setSubject(claims.sub)
     .setIssuedAt()
     .setExpirationTime("15m")
-    .sign(createSecretKey(Buffer.from(JWT_SECRET, "utf8")));
+    .sign(keyPair.privateKey);
 }
 
 async function createUpstreamServer(handler) {
@@ -309,10 +578,7 @@ async function createUpstreamServer(handler) {
       rawBody,
       json,
       sendJson(status, payload) {
-        res.writeHead(status, {
-          "content-type": "application/json"
-        });
-        res.end(JSON.stringify(payload));
+        sendJson(res, status, payload);
       }
     });
   });
@@ -324,18 +590,29 @@ async function createUpstreamServer(handler) {
   return {
     url: `http://127.0.0.1:${address.port}`,
     close() {
-      return new Promise((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-
-          resolve();
-        });
-      });
+      return closeServer(server);
     }
   };
+}
+
+function sendJson(res, status, payload) {
+  res.writeHead(status, {
+    "content-type": "application/json"
+  });
+  res.end(JSON.stringify(payload));
+}
+
+function closeServer(server) {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
 }
 
 function sleep(ms) {
