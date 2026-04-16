@@ -29,6 +29,53 @@ export const httpSchemas = {
       refreshToken: z.string().min(10).max(2048)
     })
     .strict(),
+  authOtpRequest: z
+    .object({
+      destination: z.string().min(3).max(255),
+      role: z.enum(["customer", "driver"]),
+      channel: z.enum(["sms", "email"]).optional()
+    })
+    .strict(),
+  authOtpVerify: z
+    .object({
+      destination: z.string().min(3).max(255),
+      role: z.enum(["customer", "driver"]),
+      code: z.string().regex(/^\d{6}$/)
+    })
+    .strict(),
+  authAdminLogin: z
+    .object({
+      destination: z.string().min(3).max(255),
+      password: z.string().min(8).max(1024)
+    })
+    .strict(),
+  authMfaChallenge: z
+    .object({
+      challengeToken: z.string().min(16).max(512),
+      totpCode: z.string().regex(/^\d{6}$/).optional(),
+      recoveryCode: z.string().min(8).max(128).optional()
+    })
+    .strict()
+    .refine((value) => Boolean(value.totpCode || value.recoveryCode), {
+      message: "Either totpCode or recoveryCode is required",
+      path: ["totpCode"]
+    }),
+  authOauthToken: z
+    .object({
+      grant_type: z.literal("refresh_token"),
+      refresh_token: z.string().min(10).max(2048)
+    })
+    .strict(),
+  authOauthRevoke: z
+    .object({
+      token: z.string().min(10).max(2048)
+    })
+    .strict(),
+  authLogout: z
+    .object({
+      refreshToken: z.string().min(10).max(2048)
+    })
+    .strict(),
   bookingCreate: z
     .object({
       userId: uuidSchema,
