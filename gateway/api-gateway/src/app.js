@@ -26,10 +26,13 @@ export async function createGatewayApp(options = {}) {
     upstreamTimeoutMs: Number(env.UPSTREAM_TIMEOUT_MS || 5000)
   });
   const jwtService = options.jwtService || createJwtService({
-    secret: env.JWT_ACCESS_SECRET,
-    publicKey: env.JWT_PUBLIC_KEY,
+    authServiceUrl: env.AUTH_SERVICE_URL,
+    jwksUrl: env.AUTH_JWKS_URL,
+    authMeUrl: env.AUTH_ME_URL,
     issuer: env.JWT_ISSUER,
-    audience: env.JWT_AUDIENCE
+    audience: env.JWT_AUDIENCE,
+    fetchImpl: options.fetchImpl || globalThis.fetch,
+    timeoutMs: Number(env.AUTH_VALIDATION_TIMEOUT_MS || env.UPSTREAM_TIMEOUT_MS || 5000)
   });
   const proxyClient =
     options.proxyClient ||

@@ -134,7 +134,10 @@ export function createRealtimeHub({
             extractBearerToken(request.headers.authorization) ||
             url.searchParams.get("token");
 
-          const auth = await jwtService.verifyAccessToken(token);
+          const auth = await jwtService.verifyAccessToken(token, {
+            requestId: request.headers["x-request-id"] || randomUUID(),
+            correlationId: request.headers["x-correlation-id"] || randomUUID()
+          });
           webSocketServer.handleUpgrade(request, socket, head, (clientSocket) => {
             webSocketServer.emit("connection", clientSocket, request, auth);
           });

@@ -17,7 +17,7 @@ export function createAuthMiddleware({ jwtService }) {
         throw new GatewayError(401, "UNAUTHORIZED", "Bearer token is required");
       }
 
-      request.auth = await jwtService.verifyAccessToken(token);
+      request.auth = await jwtService.verifyAccessToken(token, request.context);
       return next();
     } catch (error) {
       return next(error);
