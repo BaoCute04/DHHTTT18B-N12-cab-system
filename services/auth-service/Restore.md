@@ -81,7 +81,7 @@
 **Các service còn lại**
 - `services/user-service`
   - Dockerfile cũ bị xóa.
-  - `index.js` mới dùng `@cab/auth` để bảo vệ `/api/v1/users/me`.
+  - Ghi chú lịch sử: trước đây từng dùng `@cab/auth`; hiện tại JWT được enforce tại API Gateway.
   - thêm `src/auth-context.js` để đọc `x-auth-*` headers từ gateway.
   - thêm `/internal/users/bootstrap` để bootstrap profile theo `subjectId/accountId`.
   - `package.json` bỏ `pg`, `zod`, `kafkajs` và chuyển sang entrypoint đơn giản hơn.
