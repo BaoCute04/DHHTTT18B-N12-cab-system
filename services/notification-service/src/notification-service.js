@@ -96,6 +96,7 @@ export class NotificationService {
   }
 
   async processDomainEvent(envelope) {
+    this.logger.log?.(`💎 [NotificationService] Processing event: ${JSON.stringify(envelope)}`);
     const command = mapDomainEventToNotificationCommand(envelope);
 
     if (!command) {
