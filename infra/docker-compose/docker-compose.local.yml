@@ -42,8 +42,8 @@ services:
     container_name: cab-payment-service
     env_file:
       - ../../services/payment-service/.env.docker
-    ports:
-      - "3102:3102"
+    expose:
+      - "3102"
     depends_on:
       payment-mongodb:
         condition: service_started
@@ -62,8 +62,8 @@ services:
     container_name: cab-booking-service
     env_file:
       - ../../services/booking-service/.env.docker
-    ports:
-      - "3103:3103"
+    expose:
+      - "3103"
     depends_on:
       booking-mongodb:
         condition: service_started
@@ -82,8 +82,8 @@ services:
     container_name: cab-auth-service
     env_file:
       - ../../services/auth-service/.env.docker
-    ports:
-      - "3104:3104"
+    expose:
+      - "3104"
     depends_on:
       auth-postgres:
         condition: service_healthy
@@ -104,8 +104,8 @@ services:
     container_name: cab-pricing-service
     env_file:
       - ../../services/pricing-service/.env.docker
-    ports:
-      - "3101:3101"
+    expose:
+      - "3101"
     depends_on:
       pricing-mongodb:
         condition: service_started
@@ -124,8 +124,8 @@ services:
     container_name: cab-user-service
     env_file:
       - ../../services/user-service/.env.docker
-    ports:
-      - "3105:3105"
+    expose:
+      - "3105"
     depends_on:
       user-postgres:
         condition: service_healthy
@@ -144,8 +144,8 @@ services:
     container_name: cab-review-service
     env_file:
       - ../../services/review-service/.env.docker
-    ports:
-      - "3106:3106"
+    expose:
+      - "3106"
     depends_on:
       kafka:
         condition: service_started
@@ -161,8 +161,8 @@ services:
     container_name: cab-driver-service
     env_file:
       - ../../services/driver-service/.env.docker
-    ports:
-      - "3107:3107"
+    expose:
+      - "3107"
     depends_on:
       driver-mongodb:
         condition: service_started
@@ -181,8 +181,8 @@ services:
     container_name: cab-notification-service
     env_file:
       - ../../services/notification-service/.env.docker
-    ports:
-      - "3108:3108"
+    expose:
+      - "3108"
     depends_on:
       notification-mongodb:
         condition: service_started
@@ -201,8 +201,8 @@ services:
     container_name: cab-ride-service
     env_file:
       - ../../services/ride-service/.env.docker
-    ports:
-      - "3109:3109"
+    expose:
+      - "3109"
     depends_on:
       ride-mongodb:
         condition: service_started
@@ -218,8 +218,8 @@ services:
   payment-mongodb:
     image: mongo:7
     container_name: cab-payment-mongodb
-    ports:
-      - "27022:27017"
+    expose:
+      - "27017"
     volumes:
       - cab_payment_mongodb_data:/data/db
     networks:
@@ -232,8 +232,8 @@ services:
       POSTGRES_DB: cab_booking_auth
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "5433:5432"
+    expose:
+      - "5432"
     volumes:
       - cab_auth_postgres_data:/var/lib/postgresql/data
       - ../../services/auth-service/sql/schema.sql:/docker-entrypoint-initdb.d/001-auth-schema.sql:ro
@@ -248,8 +248,8 @@ services:
   auth-redis:
     image: redis:7-alpine
     container_name: cab-auth-redis
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - cab_auth_redis_data:/data
     networks:
@@ -262,8 +262,8 @@ services:
       POSTGRES_DB: cab_booking_user
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - cab_user_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -277,8 +277,8 @@ services:
   pricing-mongodb:
     image: mongo:7
     container_name: cab-pricing-mongodb
-    ports:
-      - "27017:27017"
+    expose:
+      - "27017"
     volumes:
       - cab_pricing_mongodb_data:/data/db
     networks:
@@ -287,8 +287,8 @@ services:
   booking-mongodb:
     image: mongo:7
     container_name: cab-booking-mongodb
-    ports:
-      - "27020:27017"
+    expose:
+      - "27017"
     volumes:
       - cab_booking_mongodb_data:/data/db
     networks:
@@ -297,8 +297,8 @@ services:
   driver-mongodb:
     image: mongo:7
     container_name: cab-driver-mongodb
-    ports:
-      - "27018:27017"
+    expose:
+      - "27017"
     volumes:
       - cab_driver_mongodb_data:/data/db
     networks:
@@ -307,8 +307,8 @@ services:
   notification-mongodb:
     image: mongo:7
     container_name: cab-notification-mongodb
-    ports:
-      - "27019:27017"
+    expose:
+      - "27017"
     volumes:
       - cab_notification_mongodb_data:/data/db
     networks:
@@ -317,8 +317,8 @@ services:
   ride-mongodb:
     image: mongo:7
     container_name: cab-ride-mongodb
-    ports:
-      - "27021:27017"
+    expose:
+      - "27017"
     volumes:
       - cab_ride_mongodb_data:/data/db
     networks:
@@ -327,8 +327,8 @@ services:
   ride-redis:
     image: redis:7-alpine
     container_name: cab-ride-redis
-    ports:
-      - "6380:6379"
+    expose:
+      - "6379"
     volumes:
       - cab_ride_redis_data:/data
     networks:
@@ -351,8 +351,8 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-    ports:
-      - "9092:9092"
+    expose:
+      - "9092"
     volumes:
       - cab_kafka_data:/tmp/kraft-combined-logs
     networks:
