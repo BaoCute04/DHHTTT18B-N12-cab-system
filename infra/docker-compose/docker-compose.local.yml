@@ -96,6 +96,27 @@ services:
       - auth-data
       - cab-broker
 
+  ml-platform-service:
+    build:
+      context: ../..
+      dockerfile: services/ml-platform-service/Dockerfile
+    image: cab-ml-platform:local
+    container_name: cab-ml-platform
+    env_file:
+      - ../../services/ml-platform-service/.env.docker
+    ports:
+      - "8000:8000"
+    volumes:
+      - cab_ml_model_store:/app/model_store
+    depends_on:
+      ml-mongodb:
+        condition: service_started
+      ml-redis:
+        condition: service_started
+    networks:
+      - cab-services
+      - ml-platform-data
+
   pricing-service:
     build:
       context: ../..
@@ -111,9 +132,12 @@ services:
         condition: service_started
       kafka:
         condition: service_started
+      ml-redis:
+        condition: service_started
     networks:
       - cab-services
       - pricing-data
+      - ml-platform-data   # đọc surge_zone:* keys từ Redis của ML Platform
       - cab-broker
 
   user-service:
@@ -284,6 +308,26 @@ services:
     networks:
       - pricing-data
 
+  ml-mongodb:
+    image: mongo:7
+    container_name: cab-ml-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - cab_ml_mongodb_data:/data/db
+    networks:
+      - ml-platform-data
+
+  ml-redis:
+    image: redis:7-alpine
+    container_name: cab-ml-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - cab_ml_redis_data:/data
+    networks:
+      - ml-platform-data
+
   booking-mongodb:
     image: mongo:7
     container_name: cab-booking-mongodb
@@ -390,6 +434,9 @@ volumes:
   cab_ride_mongodb_data:
   cab_ride_redis_data:
   cab_kafka_data:
+  cab_ml_mongodb_data:
+  cab_ml_redis_data:
+  cab_ml_model_store:
 
 networks:
   cab-edge:
@@ -403,3 +450,4 @@ networks:
   driver-data:
   notification-data:
   ride-data:
+  ml-platform-data:
