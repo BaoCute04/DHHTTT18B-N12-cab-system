@@ -8,6 +8,7 @@ const { Ride, RIDE_STATUS } = require('../models/ride.model');
 const { RideMongoModel } = require('../models/ride.mongo.model');
 const { calculateETA } = require('./eta.service');
 const { updateDriverLocation } = require('./location.service');
+const { publishRideEvent } = require('./kafka.publisher');
 const { isMongoConnected } = require('../database/mongoose');
 
 const rides = new Map();
@@ -36,6 +37,62 @@ function setRideFields(ride, updates) {
   Object.assign(ride, updates);
   ride.updatedAt = new Date().toISOString();
   return ride;
+}
+
+function serializeRide(ride) {
+  if (!ride) {
+    return null;
+  }
+
+  return typeof ride.toJSON === 'function' ? ride.toJSON() : ride;
+}
+
+async function emitRideStatusChanged(ride, extra = {}) {
+  if (!ride) {
+    return;
+  }
+
+  try {
+    await publishRideEvent('ride.status.changed', {
+      eventType: 'RideStatusChanged',
+      rideId: ride.rideId,
+      bookingId: ride.bookingId,
+      userId: ride.userId,
+      driverId: ride.driverId || null,
+      status: ride.status,
+      currentLocation: ride.currentLocation || null,
+      pickup: ride.pickup || null,
+      destination: ride.destination || null,
+      etaMinutes: ride.etaMinutes ?? null,
+      updatedAt: ride.updatedAt,
+      ...extra,
+    }, ride.rideId);
+  } catch (error) {
+    console.warn('[ride.service] failed to publish ride.status.changed:', error.message);
+  }
+}
+
+async function emitDriverAssigned(ride, extra = {}) {
+  if (!ride) {
+    return;
+  }
+
+  try {
+    await publishRideEvent('driver.assigned', {
+      eventType: 'DriverAssigned',
+      rideId: ride.rideId,
+      bookingId: ride.bookingId,
+      userId: ride.userId,
+      driverId: ride.driverId || null,
+      status: ride.status,
+      pickup: ride.pickup || null,
+      destination: ride.destination || null,
+      updatedAt: ride.updatedAt,
+      ...extra,
+    }, ride.driverId || ride.rideId);
+  } catch (error) {
+    console.warn('[ride.service] failed to publish driver.assigned:', error.message);
+  }
 }
 
 async function saveRide(ride) {
@@ -122,7 +179,12 @@ async function createRide(rideData) {
         status: rideData.driverId ? RIDE_STATUS.DRIVER_ASSIGNED : RIDE_STATUS.SEARCHING,
       });
 
-  return saveRide(ride);
+  const savedRide = await saveRide(ride);
+  await emitRideStatusChanged(serializeRide(savedRide), {
+    action: 'created',
+  });
+
+  return savedRide;
 }
 
 async function assignDriver(rideId, driverId) {
@@ -144,12 +206,16 @@ async function assignDriver(rideId, driverId) {
     ride.status = RIDE_STATUS.DRIVER_ASSIGNED;
     ride.updatedAt = new Date();
     await ride.save();
+    await emitDriverAssigned(ride);
+    await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
     return ride;
   }
 
   ride.driverId = driverId;
   ride.updateStatus(RIDE_STATUS.DRIVER_ASSIGNED);
   await saveRide(ride);
+  await emitDriverAssigned(ride);
+  await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
   return ride;
 }
 
@@ -186,6 +252,9 @@ async function updateRideLocation(rideId, driverId, location) {
 
     await ride.save();
     await updateDriverLocation(driverId, location);
+    await emitRideStatusChanged(serializeRide(ride), {
+      action: 'location-updated',
+    });
     return ride;
   }
 
@@ -205,8 +274,11 @@ async function updateRideLocation(rideId, driverId, location) {
     ride.etaMinutes = calculateETA(location, ride.destination);
   }
 
-  updateDriverLocation(driverId, location);
+  await updateDriverLocation(driverId, location);
   await saveRide(ride);
+  await emitRideStatusChanged(serializeRide(ride), {
+    action: 'location-updated',
+  });
   return ride;
 }
 
@@ -238,6 +310,7 @@ async function startRide(rideId, driverId) {
       ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
     }
     await ride.save();
+    await emitRideStatusChanged(serializeRide(ride), { action: 'started' });
     return ride;
   }
 
@@ -248,6 +321,7 @@ async function startRide(rideId, driverId) {
     ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
   }
   await saveRide(ride);
+  await emitRideStatusChanged(serializeRide(ride), { action: 'started' });
   return ride;
 }
 
@@ -274,6 +348,7 @@ async function completeRide(rideId, driverId) {
     ride.currentLocation = ride.destination;
     ride.etaMinutes = 0;
     await ride.save();
+    await emitRideStatusChanged(serializeRide(ride), { action: 'completed' });
     return ride;
   }
 
@@ -283,6 +358,7 @@ async function completeRide(rideId, driverId) {
   ride.currentLocation = ride.destination;
   ride.etaMinutes = 0;
   await saveRide(ride);
+  await emitRideStatusChanged(serializeRide(ride), { action: 'completed' });
   return ride;
 }
 
@@ -307,12 +383,20 @@ async function cancelRide(rideId, userId = null, driverId = null, reason = '') {
     ride.status = RIDE_STATUS.CANCELLED;
     ride.updatedAt = new Date();
     await ride.save();
+    await emitRideStatusChanged(serializeRide(ride), {
+      action: 'cancelled',
+      reason,
+    });
     return ride;
   }
 
   ride.status = RIDE_STATUS.CANCELLED;
   ride.updatedAt = new Date().toISOString();
   await saveRide(ride);
+  await emitRideStatusChanged(serializeRide(ride), {
+    action: 'cancelled',
+    reason,
+  });
   return ride;
 }
 

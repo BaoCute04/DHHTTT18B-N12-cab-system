@@ -7,6 +7,7 @@ import {
   DRIVER_AVAILABILITY
 } from "../utils/index.js";
 import { findDriver, listAvailableDrivers, upsertDriver, updateDriverStatus, updateDriverLocation } from "../models/Driver.js";
+import { publishDriverEvent } from "../services/kafka-publisher.js";
 
 export async function getAvailableDrivers(request, response) {
   try {
@@ -153,6 +154,21 @@ export async function updateLocation(request, response) {
     if (!updatedDriver) {
       return createErrorResponse(response, 500, "Failed to update location", request);
     }
+
+    await publishDriverEvent(
+      "driver.location.updated",
+      {
+        eventType: "DriverLocationUpdated",
+        driverId: request.params.driverId,
+        location: {
+          lat: payload.lat,
+          lng: payload.lng,
+          address: payload.address ?? null
+        },
+        updatedAt: new Date().toISOString()
+      },
+      request.params.driverId
+    );
 
     return response.json(
       createResponse({
