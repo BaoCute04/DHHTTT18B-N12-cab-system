@@ -46,7 +46,14 @@ METADATA_PATH = os.path.join(settings.model_store_path, "surge_metadata.json")
 def _generate_synthetic_data(n: int = 800) -> pd.DataFrame:
     """
     Sinh dữ liệu tổng hợp để train baseline model khi Feature Store chưa có đủ data thực.
-    Label = demand/supply ratio + noise, clamped vào [1.0, 3.0].
+
+    Quy tắc xây dựng label (phản ánh đúng quy luật kinh tế):
+      - Base surge = demand / supply (Cầu/Cung)
+      - Giờ cao điểm (7-9h, 17-19h, 22-23h) → nhân thêm 1.15
+      - Trời mưa → nhân thêm 1.2
+      - Kẹt xe (tốc độ < 15km/h) → nhân thêm 1.1
+      - Noise DƯƠNG nhỏ (0~0.1) để dữ liệu không hoàn hảo nhưng không sai hướng
+      - Clamp vào [1.0, 3.0]
     """
     rng = np.random.default_rng(42)
     df = pd.DataFrame(
@@ -59,9 +66,26 @@ def _generate_synthetic_data(n: int = 800) -> pd.DataFrame:
             "rain_indicator": rng.integers(0, 2, n).astype(float),
         }
     )
-    raw = df["demand_count"] / df["supply_count"].clip(lower=1)
-    df["label"] = (raw + rng.normal(0, 0.15, n)).clip(1.0, 3.0)
-    logger.info("Generated %d synthetic training samples.", n)
+
+    # Base: tỷ lệ Cầu/Cung
+    base = df["demand_count"] / df["supply_count"].clip(lower=1)
+
+    # Giờ cao điểm tăng giá thêm 15%
+    peak_hours = df["hour_of_day"].isin([7, 8, 9, 17, 18, 19, 22, 23])
+    base = base * (1 + 0.15 * peak_hours)
+
+    # Mưa tăng thêm 20%
+    base = base * (1 + 0.20 * df["rain_indicator"])
+
+    # Kẹt xe (tốc độ chậm) tăng thêm 10%
+    slow_traffic = (df["avg_speed_kmh"] < 15).astype(float)
+    base = base * (1 + 0.10 * slow_traffic)
+
+    # Noise DƯƠNG (0.0 → 0.1) — không để âm tránh label giảm bất hợp lý
+    noise = rng.uniform(0.0, 0.10, n)
+    df["label"] = (base + noise).clip(1.0, 3.0)
+
+    logger.info("Generated %d synthetic training samples (monotonic-safe).", n)
     return df
 
 
@@ -106,7 +130,22 @@ async def run_surge_training() -> dict:
         X, y, test_size=0.2, random_state=42
     )
 
-    # ── 3. XGBoost Regressor ──────────────────────────────────────────────────
+    # ── 3. XGBoost Regressor với Monotonic Constraints ───────────────────────
+    #
+    # monotone_constraints: ràng buộc từng feature theo thứ tự FEATURE_COLS
+    # Giá trị: +1 = tăng feature → surge chỉ được tăng hoặc giữ
+    #           0 = không ràng buộc
+    #          -1 = tăng feature → surge chỉ được giảm hoặc giữ
+    #
+    # FEATURE_COLS = [hour_of_day, day_of_week, demand_count, supply_count, avg_speed_kmh, rain_indicator]
+    #                    0               0           +1             -1             -1              +1
+    #
+    # Giải thích:
+    #   demand_count  (+1): Cầu tăng → Surge PHẢI tăng hoặc giữ nguyên (cấm giảm)
+    #   supply_count  (-1): Cung tăng → Surge PHẢI giảm hoặc giữ nguyên (xe nhiều thì rẻ)
+    #   avg_speed_kmh (-1): Tốc độ tăng (đường thông) → Surge giảm (ít kẹt xe = dễ đặt)
+    #   rain_indicator(+1): Mưa → Surge tăng
+    #   hour/day_of_week(0): Không ràng buộc cứng (giờ tác động phức tạp)
     model = xgb.XGBRegressor(
         n_estimators=150,
         max_depth=5,
@@ -116,6 +155,7 @@ async def run_surge_training() -> dict:
         objective="reg:squarederror",
         random_state=42,
         verbosity=0,
+        monotone_constraints=(0, 0, 1, -1, -1, 1),  # [hour, day, demand, supply, speed, rain]
     )
     model.fit(
         X_train,

@@ -2,10 +2,11 @@
 scheduler.py
 ────────────
 Background task: mỗi SURGE_PUSH_INTERVAL_SECONDS giây,
-fetch zone metrics từ MongoDB, predict surge multiplier,
-và PUSH kết quả vào Redis với key `surge_zone:{zoneId}`.
+fetch zone metrics từ Redis (live) hoặc MongoDB (fallback),
+predict surge multiplier bằng XGBoost, và PUSH kết quả
+vào Redis với key `surge_zone:{zoneId}`.
 
-Pricing Service (Node.js) chỉ cần GET từ Redis — không cần gọi HTTP sang ML Platform.
+Pricing Service (Node.js) chỉ cần GET từ Redis.
 """
 
 import json
@@ -23,74 +24,77 @@ logger = logging.getLogger(__name__)
 # ── Scheduler singleton ────────────────────────────────────────────────────────
 _scheduler = AsyncIOScheduler(timezone="UTC")
 
-# ── Mock zones dùng khi DB chưa có data (cold start) ─────────────────────────
-_COLD_START_ZONES = [
-    {
-        "zoneId": "zone_quan1",
-        "demand_count": 25,
-        "supply_count": 10,
-        "avg_speed_kmh": 8.5,
-        "rain_indicator": 0,
-    },
-    {
-        "zoneId": "zone_quan3",
-        "demand_count": 15,
-        "supply_count": 14,
-        "avg_speed_kmh": 22.0,
-        "rain_indicator": 0,
-    },
-    {
-        "zoneId": "zone_binhthanh",
-        "demand_count": 8,
-        "supply_count": 20,
-        "avg_speed_kmh": 35.0,
-        "rain_indicator": 0,
-    },
-    {
-        "zoneId": "zone_tanbinh",
-        "demand_count": 30,
-        "supply_count": 9,
-        "avg_speed_kmh": 12.0,
-        "rain_indicator": 1,
-    },
-]
+async def _build_live_zones(redis) -> list[dict]:
+    """
+    Scan Redis để tìm tất cả zone đang có tài xế active (supply:zone:*).
+    Đây là các Geohash zone thực tế do driver-service ghi vào.
+    Với mỗi zone: đọc supply count + demand count → làm input feature XGBoost.
+    """
+    live_zones = []
+    try:
+        supply_keys = await redis.keys("supply:zone:*")
+        if not supply_keys:
+            return []
+
+        for key in supply_keys:
+            # key dạng "supply:zone:w7epx" → lấy phần cuối
+            geohash = key.split(":")[-1]
+            supply_count = await redis.scard(f"supply:zone:{geohash}")
+            demand_count = await redis.scard(f"demand:zone:{geohash}")
+
+            live_zones.append({
+                "zoneId": geohash,
+                "supply_count": float(supply_count),
+                "demand_count": float(demand_count),
+                "avg_speed_kmh": 20.0,   # mặc định — chưa có nguồn dữ liệu tốc độ
+                "rain_indicator": 0,
+            })
+
+        logger.info(
+            "📍 [Surge Push] %d live zones từ Redis: %s",
+            len(live_zones),
+            [z["zoneId"] for z in live_zones],
+        )
+    except Exception as exc:
+        logger.error("❌ [_build_live_zones] Lỗi scan Redis: %s", exc)
+
+    return live_zones
 
 
 async def _push_surge_for_all_zones() -> None:
     """
     Core scheduled task.
-
-    Steps:
-      1. Fetch tất cả zone metrics từ MongoDB `zone_metrics` collection
-      2. Nếu DB trống → dùng mock zones (cold-start safety net)
-      3. Với mỗi zone: predict surge (XGBoost hoặc fallback formula)
-      4. PUSH payload JSON vào Redis key `surge_zone:{zoneId}` với TTL=90s
+    Priority order:
+      1. Live zones từ Redis (supply:zone:* keys của driver-service)
+      2. Zones từ MongoDB zone_metrics collection
+      3. Cold-start mock zones (cuối cùng)
     """
     try:
         db = get_mongo_db()
         redis = get_redis()
 
-        # ── 1. Fetch zone metrics ─────────────────────────────────────────────
-        zones = await db.zone_metrics.find({}, {"_id": 0}).to_list(length=200)
+        # ── 1. Ưu tiên zones live từ Redis ───────────────────────────────────
+        zones = await _build_live_zones(redis)
 
+        # ── 2. Fallback: zones từ MongoDB ─────────────────────────────────────
         if not zones:
-            zones = _COLD_START_ZONES
-            logger.warning(
-                "⚠️  zone_metrics collection is empty. Using %d cold-start mock zones.",
-                len(zones),
-            )
+            zones = await db.zone_metrics.find({}, {"_id": 0}).to_list(length=200)
 
-        # ── 2. Enrich với current hour/day ────────────────────────────────────
+        # ── 3. Nếu vẫn không có zones nào, bỏ qua không làm gì cả ────────────
+        if not zones:
+            logger.info("ℹ️ Không có tài xế nào active. Tạm ngưng chạy AI...")
+            return
+
+        # ── 4. Enrich với current hour/day ────────────────────────────────────
         now = datetime.now(tz=timezone.utc)
         for zone in zones:
             zone.setdefault("hour_of_day", now.hour)
             zone.setdefault("day_of_week", now.weekday())
 
-        # ── 3. Predict & Push ──────────────────────────────────────────────────
+        # ── 5. Predict & Push ──────────────────────────────────────────────────
         pushed: list[dict] = []
         for zone in zones:
             zone_id = zone.get("zoneId", "zone_unknown")
-
             surge = predict_surge(zone, settings.model_store_path)
 
             payload = json.dumps(
@@ -104,21 +108,17 @@ async def _push_surge_for_all_zones() -> None:
             )
 
             redis_key = f"surge_zone:{zone_id}"
-            # setex: SET + EXPIRE atomically
             await redis.setex(redis_key, settings.surge_redis_ttl, payload)
             pushed.append({"zone": zone_id, "surge": surge})
 
         logger.info(
-            "✅ [Surge Push] %d zones pushed to Redis → %s",
+            "✅ [Surge Push] %d zones pushed → %s",
             len(pushed),
             pushed,
         )
 
     except Exception as exc:
-        # Bắt toàn bộ exception để scheduler KHÔNG bị dừng
-        logger.error(
-            "❌ [Surge Push] Task failed: %s", exc, exc_info=True
-        )
+        logger.error("❌ [Surge Push] Task failed: %s", exc, exc_info=True)
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -129,7 +129,6 @@ async def start_scheduler() -> None:
         seconds=settings.surge_push_interval_seconds,
         id="surge_push_job",
         replace_existing=True,
-        # next_run_time=now() → chạy ngay sau khi service khởi động
         next_run_time=datetime.now(tz=timezone.utc),
     )
     _scheduler.start()

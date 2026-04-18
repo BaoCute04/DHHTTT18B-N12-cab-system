@@ -7,6 +7,7 @@ import {
   DRIVER_AVAILABILITY
 } from "../utils/index.js";
 import { findDriver, listAvailableDrivers, upsertDriver, updateDriverStatus, updateDriverLocation } from "../models/Driver.js";
+import { publishDriverToZone, removeDriverFromZone } from "../utils/redis.js";
 
 export async function getAvailableDrivers(request, response) {
   try {
@@ -114,6 +115,15 @@ export async function goOffline(request, response) {
       return createErrorResponse(response, 404, "Driver not found", request);
     }
 
+    // Xóa tài xế khỏi Supply zone trước khi đổi trạng thái
+    if (driver.location?.lat != null && driver.location?.lng != null) {
+      await removeDriverFromZone(
+        request.params.driverId,
+        driver.location.lat,
+        driver.location.lng
+      );
+    }
+
     const updatedDriver = await updateDriverStatus(request.params.driverId, {
       status: DRIVER_STATUS.OFFLINE
     });
@@ -152,6 +162,15 @@ export async function updateLocation(request, response) {
 
     if (!updatedDriver) {
       return createErrorResponse(response, 500, "Failed to update location", request);
+    }
+
+    // Publish vị trí tài xế vào Redis Supply zone (chỉ khi đang ONLINE)
+    if (driver.status === DRIVER_STATUS.ONLINE) {
+      await publishDriverToZone(
+        request.params.driverId,
+        payload.lat,
+        payload.lng
+      );
     }
 
     return response.json(

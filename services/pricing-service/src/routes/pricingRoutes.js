@@ -6,15 +6,15 @@ const router = express.Router();
 
 // Schema kiểm tra dữ liệu đầu vào (Validation)
 const quoteSchema = Joi.object({
-    pickupAddress: Joi.string().required(),
+    pickupAddress: Joi.string().optional(),
     destinationAddress: Joi.string().required(),
     vehicleType: Joi.string().valid('bike', 'standard', 'premium', 'suv').required(),
     distanceKm: Joi.number().positive().required(),
     durationMin: Joi.number().positive().required(),
-    
-    // THÊM 2 TRƯỜNG NÀY ĐỂ TEST CUNG - CẦU
-    demandIndex: Joi.number().min(0).optional(), // Có thể = 0 (Không ai đặt)
-    supplyIndex: Joi.number().min(0).optional()  // Có thể = 0 (Không có tài xế)
+
+    // TỌA ĐỘ ĐIỂM ĐÓN — dùng để tự động tính Supply/Demand từ Redis
+    pickupLat: Joi.number().min(-90).max(90).required(),
+    pickupLng: Joi.number().min(-180).max(180).required()
 });
 
 const validateQuote = (req, res, next) => {
