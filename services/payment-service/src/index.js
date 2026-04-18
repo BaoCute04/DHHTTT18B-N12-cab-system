@@ -1,6 +1,6 @@
-import { startService } from "../../../platform/node/create-service-app.js";
+import { startServer } from './server.js';
 
-startService("payment-service").catch((error) => {
-  console.error(error);
+startServer().catch((error) => {
+  console.error('[payment-service] failed to start', error);
   process.exit(1);
 });
