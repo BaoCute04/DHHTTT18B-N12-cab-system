@@ -83,6 +83,7 @@ export async function upsertDriver(driverId, payload) {
       vehiclePlate: payload.vehiclePlate ?? undefined,
       status: payload.status ?? undefined,
       availability: payload.availability ?? undefined,
+      location: payload.location ?? undefined,
       updatedAt: new Date()
     };
 

@@ -1,11 +1,11 @@
-import { Kafka } from 'kafkajs';
+const { Kafka } = require('kafkajs');
 
 class MessageBroker {
     constructor() {
         const brokers = process.env.KAFKA_BROKERS ? process.env.KAFKA_BROKERS.split(',') : ['kafka:9092'];
-        
+
         this.kafka = new Kafka({
-            clientId: 'booking-service',
+            clientId: 'ride-service',
             brokers: brokers,
             retry: { initialRetryTime: 100, retries: 8 }
         });
@@ -15,10 +15,9 @@ class MessageBroker {
     async connect() {
         try {
             await this.producer.connect();
-            console.log(`✅ [Kafka] Đã kết nối thành công tới ${process.env.KAFKA_BROKERS}`);
+            console.log(`✅ [Kafka] Đã kết nối thành công tới ${process.env.KAFKA_BROKERS || 'kafka:9092'}`);
         } catch (error) {
             console.error('❌ [Kafka] Lỗi kết nối:', error.message);
-            // Không throw error để service vẫn sống dù Kafka sập (Resilience)
         }
     }
 
@@ -30,11 +29,11 @@ class MessageBroker {
                     { value: JSON.stringify(message) }
                 ]
             });
-            console.log(`📤 [Kafka] Đã bắn event [${message.event_type}] tới topic [${topic}]`);
+            console.log(`📤 [Kafka] Đã bắn event [${message.event_type || 'unknown'}] tới topic [${topic}]`);
         } catch (error) {
             console.error(`❌ [Kafka] Lỗi publish event:`, error.message);
         }
     }
 }
 
-export default new MessageBroker();
+module.exports = new MessageBroker();

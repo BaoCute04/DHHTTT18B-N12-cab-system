@@ -23,6 +23,7 @@ export async function startNotificationEventConsumer({
   logger = console
 }) {
   const brokers = parseBrokers(rawBrokers);
+  console.log(`🚀 [Kafka Consumer] Starting initialization for ${serviceKey}...`);
 
   if (brokers.length === 0 || typeof onMessage !== "function") {
     return createNoopConsumer("Kafka consumer disabled");
@@ -37,7 +38,9 @@ export async function startNotificationEventConsumer({
   const kafka = new Kafka({
     clientId: `${serviceKey}-events`,
     brokers,
-    logLevel: logLevel.NOTHING
+    logLevel: logLevel.NOTHING,
+    connectionTimeout: 5000,
+    requestTimeout: 10000
   });
 
   const consumer = kafka.consumer({ groupId });

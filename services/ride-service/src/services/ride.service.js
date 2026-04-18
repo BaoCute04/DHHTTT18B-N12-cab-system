@@ -9,6 +9,8 @@ const { RideMongoModel } = require('../models/ride.mongo.model');
 const { calculateETA } = require('./eta.service');
 const { updateDriverLocation } = require('./location.service');
 const { isMongoConnected } = require('../database/mongoose');
+const messageBroker = require('../utils/messageBroker');
+
 
 const rides = new Map();
 
@@ -122,7 +124,21 @@ async function createRide(rideData) {
         status: rideData.driverId ? RIDE_STATUS.DRIVER_ASSIGNED : RIDE_STATUS.SEARCHING,
       });
 
-  return saveRide(ride);
+  const savedRide = await saveRide(ride);
+  
+  await messageBroker.publish('ride.status.changed', {
+    event_type: 'RIDE_CREATED',
+    rideId: ride.rideId,
+    bookingId: ride.bookingId,
+    userId: ride.userId,
+    driverId: ride.driverId,
+    status: ride.status,
+    pickup: ride.pickup,
+    destination: ride.destination,
+    timestamp: new Date().toISOString()
+  });
+
+  return savedRide;
 }
 
 async function assignDriver(rideId, driverId) {
@@ -238,16 +254,25 @@ async function startRide(rideId, driverId) {
       ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
     }
     await ride.save();
-    return ride;
+  } else {
+    ride.status = RIDE_STATUS.IN_PROGRESS;
+    ride.startedAt = new Date().toISOString();
+    ride.updatedAt = new Date().toISOString();
+    if (ride.currentLocation) {
+      ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
+    }
+    await saveRide(ride);
   }
 
-  ride.status = RIDE_STATUS.IN_PROGRESS;
-  ride.startedAt = new Date().toISOString();
-  ride.updatedAt = new Date().toISOString();
-  if (ride.currentLocation) {
-    ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
-  }
-  await saveRide(ride);
+  await messageBroker.publish('ride.status.changed', {
+    event_type: 'RIDE_STARTED',
+    rideId: ride.rideId,
+    userId: ride.userId,
+    status: ride.status,
+    startedAt: ride.startedAt,
+    timestamp: new Date().toISOString()
+  });
+
   return ride;
 }
 
@@ -274,15 +299,24 @@ async function completeRide(rideId, driverId) {
     ride.currentLocation = ride.destination;
     ride.etaMinutes = 0;
     await ride.save();
-    return ride;
+  } else {
+    ride.status = RIDE_STATUS.COMPLETED;
+    ride.completedAt = new Date().toISOString();
+    ride.updatedAt = new Date().toISOString();
+    ride.currentLocation = ride.destination;
+    ride.etaMinutes = 0;
+    await saveRide(ride);
   }
 
-  ride.status = RIDE_STATUS.COMPLETED;
-  ride.completedAt = new Date().toISOString();
-  ride.updatedAt = new Date().toISOString();
-  ride.currentLocation = ride.destination;
-  ride.etaMinutes = 0;
-  await saveRide(ride);
+  await messageBroker.publish('ride.status.changed', {
+    event_type: 'RIDE_COMPLETED',
+    rideId: ride.rideId,
+    userId: ride.userId,
+    status: ride.status,
+    completedAt: ride.completedAt,
+    timestamp: new Date().toISOString()
+  });
+
   return ride;
 }
 
@@ -307,12 +341,21 @@ async function cancelRide(rideId, userId = null, driverId = null, reason = '') {
     ride.status = RIDE_STATUS.CANCELLED;
     ride.updatedAt = new Date();
     await ride.save();
-    return ride;
+  } else {
+    ride.status = RIDE_STATUS.CANCELLED;
+    ride.updatedAt = new Date().toISOString();
+    await saveRide(ride);
   }
 
-  ride.status = RIDE_STATUS.CANCELLED;
-  ride.updatedAt = new Date().toISOString();
-  await saveRide(ride);
+  await messageBroker.publish('ride.status.changed', {
+    event_type: 'RIDE_CANCELLED',
+    rideId: ride.rideId,
+    userId: ride.userId,
+    status: ride.status,
+    reason: reason,
+    timestamp: new Date().toISOString()
+  });
+
   return ride;
 }
 

@@ -80,11 +80,13 @@ export const httpSchemas = {
     .object({
       userId: uuidSchema,
       pickup: coordinatesSchema,
-      destination: coordinatesSchema,
+      drop: coordinatesSchema, // 
       vehicleType: z.enum(["bike", "car", "car_plus"]),
+      distanceKm: z.number(),        
+      paymentMethod: z.string(),      
       priceSnapshot: priceSnapshotSchema
     })
-    .strict(),
+    .strict(), 
   paymentCreate: z
     .object({
       rideId: uuidSchema,
