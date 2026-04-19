@@ -7,11 +7,11 @@ import {
   DRIVER_AVAILABILITY
 } from "../utils/index.js";
 import { findDriver, listAvailableDrivers, upsertDriver, updateDriverStatus, updateDriverLocation } from "../models/Driver.js";
-<<<<<<< HEAD
+
 import { publishDriverEvent } from "../services/kafka-publisher.js";
-=======
+
 import { publishDriverToZone, removeDriverFromZone } from "../utils/redis.js";
->>>>>>> origin/QBaoAI_MLplatform
+
 
 export async function getAvailableDrivers(request, response) {
   try {
@@ -168,7 +168,7 @@ export async function updateLocation(request, response) {
       return createErrorResponse(response, 500, "Failed to update location", request);
     }
 
-<<<<<<< HEAD
+
     await publishDriverEvent(
       "driver.location.updated",
       {
@@ -183,7 +183,7 @@ export async function updateLocation(request, response) {
       },
       request.params.driverId
     );
-=======
+
     // Publish vị trí tài xế vào Redis Supply zone (chỉ khi đang ONLINE)
     if (driver.status === DRIVER_STATUS.ONLINE) {
       await publishDriverToZone(
@@ -192,7 +192,7 @@ export async function updateLocation(request, response) {
         payload.lng
       );
     }
->>>>>>> origin/QBaoAI_MLplatform
+
 
     return response.json(
       createResponse({
