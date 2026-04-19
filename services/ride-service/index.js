@@ -23,6 +23,13 @@ async function startServer() {
     console.warn('[MongoDB] Connection skipped or failed:', error.message);
   }
 
+  try {
+    const messageBroker = require('./src/utils/messageBroker');
+    await messageBroker.connect();
+  } catch (error) {
+    console.warn('[Kafka] Connection skipped or failed:', error.message);
+  }
+
   const port = process.env.PORT || 3109;
 
   server.listen(port, () => {
