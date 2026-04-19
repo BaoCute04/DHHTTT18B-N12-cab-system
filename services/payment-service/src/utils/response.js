@@ -1,10 +1,9 @@
-import { generateId } from './ids.js';
 import { nowIso } from './time.js';
 
 export function buildMeta(request) {
   return {
-    requestId: request.requestMeta?.requestId || generateId(),
-    correlationId: request.requestMeta?.correlationId || generateId(),
+    requestId: request.requestMeta?.requestId || 'uuid',
+    correlationId: request.requestMeta?.correlationId || 'uuid',
     timestamp: nowIso()
   };
 }

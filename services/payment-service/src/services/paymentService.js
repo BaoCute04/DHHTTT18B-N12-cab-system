@@ -1,13 +1,24 @@
-import { ALLOWED_METHODS, PAYMENT_STATUSES } from '../config/constants.js';
+import {
+  ALLOWED_METHODS,
+  DEFAULT_CURRENCY,
+  PAYMENT_EVENTS,
+  PAYMENT_SAGA_STATUSES,
+  PAYMENT_STATUSES
+} from '../config/constants.js';
 import { PaymentModel } from '../models/paymentModel.js';
-import { nowIso } from '../utils/time.js';
 import { assertUuid } from '../utils/validation.js';
+import { nowIso } from '../utils/time.js';
 import {
   createPaymentDocument,
   findPaymentById,
   findPaymentByIdempotencyKey,
   updatePaymentDocument
 } from '../repositories/paymentRepository.js';
+import { appendTransaction } from '../repositories/transactionRepository.js';
+import { resolveProvider } from '../providers/paymentProviders.js';
+import { publishPaymentEvent } from '../events/eventPublisher.js';
+import { generateId } from '../utils/ids.js';
+import { runWithExponentialBackoff } from './retryEngine.js';
 
 function createHttpError(statusCode, message, details = null) {
   const error = new Error(message);
@@ -38,15 +49,7 @@ function sanitizeMethod(method) {
   return normalized;
 }
 
-function inferProvider(method) {
-  if (method === 'momo' || method === 'vnpay') {
-    return `${method}-mock`;
-  }
-
-  return 'internal-mock';
-}
-
-function formatPayment(payment) {
+function toPublicPayment(payment) {
   return {
     paymentId: payment.paymentId,
     rideId: payment.rideId,
@@ -55,80 +58,92 @@ function formatPayment(payment) {
     currency: payment.currency,
     method: payment.method,
     status: payment.status,
-    providerRef: payment.providerRef,
+    providerRef: payment.providerRef ?? null,
     createdAt: payment.createdAt,
     updatedAt: payment.updatedAt
   };
 }
 
-function buildRetryHistory(maxRetries, baseDelayMs, failureReason) {
-  const retries = [];
-
-  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
-    retries.push({
-      attempt,
-      delayMs: baseDelayMs * 2 ** (attempt - 1),
-      result: 'FAILED',
-      reason: failureReason,
-      timestamp: nowIso()
-    });
-  }
-
-  return retries;
+async function recordTransaction(env, paymentId, type, status, payload = {}) {
+  return appendTransaction(env, {
+    transactionId: generateId(),
+    paymentId,
+    type,
+    status,
+    payload,
+    createdAt: nowIso()
+  });
 }
 
-export async function createPayment(payload, idempotencyKey = null) {
+async function publishSagaEvent(env, topic, payment, extra = {}) {
+  return publishPaymentEvent(env, topic, {
+    ...toPublicPayment(payment),
+    ...extra,
+    sagaStatus: payment.sagaStatus
+  });
+}
+
+async function publishIntegrationEvents(env, eventNames, payment, extra = {}) {
+  for (const topic of eventNames) {
+    await publishPaymentEvent(env, topic, {
+      ...toPublicPayment(payment),
+      ...extra,
+      sagaStatus: payment.sagaStatus
+    });
+  }
+}
+
+export async function createPayment(env, payload, idempotencyKey = null) {
   ensureRequiredString(payload?.rideId, 'rideId');
   ensureRequiredString(payload?.userId, 'userId');
   ensurePositiveInteger(payload?.amount, 'amount');
 
-  const rideId = assertUuid(payload?.rideId, 'rideId', createHttpError);
-  const userId = assertUuid(payload?.userId, 'userId', createHttpError);
-  const method = sanitizeMethod(payload?.method);
+  const rideId = assertUuid(payload.rideId, 'rideId', createHttpError);
+  const userId = assertUuid(payload.userId, 'userId', createHttpError);
+  const method = sanitizeMethod(payload.method);
 
   if (idempotencyKey) {
-    const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+    const existing = await findPaymentByIdempotencyKey(env, idempotencyKey);
     if (existing) {
-      return {
-        payment: formatPayment(existing),
-        reused: true
-      };
+      return { payment: toPublicPayment(existing), reused: true };
     }
   }
 
+  const provider = resolveProvider(method);
   const payment = new PaymentModel({
     rideId,
     userId,
     amount: payload.amount,
-    currency: payload.currency || 'VND',
+    currency: payload.currency || env.defaultCurrency || DEFAULT_CURRENCY,
     method,
-    provider: inferProvider(method),
-    idempotencyKey
+    provider: provider.name,
+    idempotencyKey: idempotencyKey || undefined
   });
 
-  await createPaymentDocument(payment);
-
-  return {
-    payment: formatPayment(payment),
-    reused: false
-  };
+  await createPaymentDocument(env, payment);
+  await recordTransaction(env, payment.paymentId, 'CREATE', PAYMENT_STATUSES.PENDING, {
+    amount: payment.amount,
+    method: payment.method,
+    idempotencyKey: payment.idempotencyKey || null
+  });
+  await publishPaymentEvent(env, PAYMENT_EVENTS.CREATED, toPublicPayment(payment));
+  return { payment: toPublicPayment(payment), reused: false };
 }
 
-export async function getPaymentById(paymentId) {
-  ensureRequiredString(paymentId, 'paymentId');
+export async function getPaymentById(env, paymentId) {
   const normalizedPaymentId = assertUuid(paymentId, 'paymentId', createHttpError);
-  const payment = await findPaymentById(normalizedPaymentId);
+  const payment = await findPaymentById(env, normalizedPaymentId);
 
   if (!payment) {
     throw createHttpError(404, 'Payment not found');
   }
 
-  return formatPayment(payment);
+  return toPublicPayment(payment);
 }
 
-export async function confirmPayment(paymentId, payload = {}) {
+export async function confirmPayment(env, paymentId, payload = {}) {
   const normalizedPaymentId = assertUuid(paymentId, 'paymentId', createHttpError);
-  const payment = await findPaymentById(normalizedPaymentId);
+  const payment = await findPaymentById(env, normalizedPaymentId);
 
   if (!payment) {
     throw createHttpError(404, 'Payment not found');
@@ -138,44 +153,138 @@ export async function confirmPayment(paymentId, payload = {}) {
     throw createHttpError(409, `Cannot confirm payment in status '${payment.status}'`);
   }
 
-  const outcome = String(payload.outcome || 'success').trim().toLowerCase();
-  const providerRef = payload.providerRef || `MOCK-${payment.method.toUpperCase()}-${Date.now()}`;
-  const updates = {
+  if (payment.status === PAYMENT_STATUSES.COMPLETED) {
+    return toPublicPayment(payment);
+  }
+
+  const provider = resolveProvider(payment.method);
+  const processingTimestamp = nowIso();
+  const processing = await updatePaymentDocument(env, normalizedPaymentId, {
+    status: PAYMENT_STATUSES.PROCESSING,
+    sagaStatus: PAYMENT_SAGA_STATUSES.STARTED,
+    lastAttemptAt: processingTimestamp,
+    updatedAt: processingTimestamp
+  });
+
+  await recordTransaction(env, normalizedPaymentId, 'SAGA_START', PAYMENT_STATUSES.PROCESSING, {
+    paymentGateway: provider.name
+  });
+  await publishSagaEvent(env, PAYMENT_EVENTS.SAGA_STARTED, processing, {
+    stage: 'StartPaymentSaga'
+  });
+  await publishPaymentEvent(env, PAYMENT_EVENTS.PROCESSING_STARTED, {
+    ...toPublicPayment(processing),
+    stage: 'charge_requested'
+  });
+
+  const retry = await runWithExponentialBackoff(
+    async (attempt) => {
+      const attemptResult = await provider.charge(payment, payload, attempt);
+      await recordTransaction(env, normalizedPaymentId, 'CHARGE_ATTEMPT', PAYMENT_STATUSES.PROCESSING, {
+        attempt,
+        result: attemptResult.status,
+        providerRef: attemptResult.providerRef || null,
+        reason: attemptResult.reason || null
+      });
+      return attemptResult;
+    },
+    {
+      maxRetries: payload.maxRetries ?? env.retry.maxRetries,
+      baseDelayMs: payload.baseDelayMs ?? env.retry.baseDelayMs,
+      maxDelayMs: payload.maxDelayMs ?? env.retry.maxDelayMs
+    }
+  );
+
+  const retryHistory = retry.history;
+  const retryCount = retryHistory.length;
+  const result = retry.result;
+  const providerRef = result.providerRef || payment.providerRef || null;
+  const updatedAt = nowIso();
+  const nextRetryAt = retry.nextRetryAt;
+
+  if (result.status === 'COMPLETED') {
+    const updated = await updatePaymentDocument(env, normalizedPaymentId, {
+      status: PAYMENT_STATUSES.COMPLETED,
+      sagaStatus: PAYMENT_SAGA_STATUSES.COMPLETED,
+      providerRef,
+      failureReason: null,
+      retryCount,
+      retryHistory,
+      nextRetryAt: null,
+      confirmedAt: nowIso(),
+      updatedAt
+    });
+
+    await recordTransaction(env, normalizedPaymentId, 'CONFIRM', PAYMENT_STATUSES.COMPLETED, {
+      providerRef,
+      retryCount,
+      retryHistory,
+      sagaStatus: PAYMENT_SAGA_STATUSES.COMPLETED
+    });
+    await publishPaymentEvent(env, PAYMENT_EVENTS.COMPLETED, toPublicPayment(updated));
+    await publishSagaEvent(env, PAYMENT_EVENTS.SAGA_COMPLETED, updated, {
+      stage: 'PaymentSagaCompleted'
+    });
+    await publishIntegrationEvents(env, [
+      PAYMENT_EVENTS.RIDE_PAYMENT_COMPLETED,
+      PAYMENT_EVENTS.NOTIFICATION_PAYMENT_COMPLETED,
+      PAYMENT_EVENTS.WALLET_LEDGER_CAPTURE_REQUESTED
+    ], updated, { stage: 'DownstreamIntegrationReady' });
+    return toPublicPayment(updated);
+  }
+
+  const failureReason = result.reason || 'Payment failed';
+  const failed = await updatePaymentDocument(env, normalizedPaymentId, {
+    status: PAYMENT_STATUSES.FAILED,
+    sagaStatus: PAYMENT_SAGA_STATUSES.FAILED,
     providerRef,
-    updatedAt: nowIso()
-  };
+    failureReason,
+    retryCount,
+    retryHistory,
+    nextRetryAt,
+    updatedAt
+  });
 
-  if (outcome === 'success') {
-    updates.status = PAYMENT_STATUSES.COMPLETED;
-    updates.failureReason = null;
-    updates.confirmedAt = nowIso();
-    updates.retryCount = payment.retryCount || 0;
-    updates.retryHistory = payment.retryHistory || [];
-  } else if (outcome === 'failed') {
-    updates.status = PAYMENT_STATUSES.FAILED;
-    updates.failureReason = payload.failureReason || 'Payment confirmation failed';
-  } else if (outcome === 'timeout') {
-    const maxRetries = Number.isInteger(payload.maxRetries) && payload.maxRetries > 0 ? payload.maxRetries : 3;
-    const baseDelayMs = Number.isInteger(payload.baseDelayMs) && payload.baseDelayMs > 0 ? payload.baseDelayMs : 500;
-    const failureReason = payload.failureReason || 'Gateway timeout';
+  await recordTransaction(env, normalizedPaymentId, 'CONFIRM', PAYMENT_STATUSES.FAILED, {
+    providerRef,
+    failureReason,
+    retryCount,
+    retryHistory,
+    exhausted: retry.exhausted
+  });
 
-    updates.status = PAYMENT_STATUSES.FAILED;
-    updates.retryCount = maxRetries;
-    updates.retryHistory = buildRetryHistory(maxRetries, baseDelayMs, failureReason);
-    updates.failureReason = failureReason;
-  } else {
-    throw createHttpError(400, 'Unsupported confirm outcome', {
-      allowedOutcomes: ['success', 'failed', 'timeout']
+  if (retry.exhausted) {
+    await publishPaymentEvent(env, PAYMENT_EVENTS.RETRY_EXHAUSTED, {
+      ...toPublicPayment(failed),
+      failureReason,
+      retryCount
     });
   }
 
-  const updatedPayment = await updatePaymentDocument(normalizedPaymentId, updates);
-  return formatPayment(updatedPayment);
+  await publishPaymentEvent(env, PAYMENT_EVENTS.FAILED, {
+    ...toPublicPayment(failed),
+    failureReason,
+    retryCount
+  });
+  await publishSagaEvent(env, PAYMENT_EVENTS.SAGA_FAILED, failed, {
+    stage: retry.exhausted ? 'PaymentRetryExhausted' : 'PaymentSagaFailed',
+    failureReason,
+    retryCount
+  });
+  await publishIntegrationEvents(env, [
+    PAYMENT_EVENTS.RIDE_PAYMENT_FAILED,
+    PAYMENT_EVENTS.NOTIFICATION_PAYMENT_FAILED
+  ], failed, {
+    failureReason,
+    retryCount,
+    stage: 'DownstreamIntegrationReady'
+  });
+  return toPublicPayment(failed);
 }
 
-export async function refundPayment(paymentId, payload = {}) {
+export async function refundPayment(env, paymentId, payload = {}) {
   const normalizedPaymentId = assertUuid(paymentId, 'paymentId', createHttpError);
-  const payment = await findPaymentById(normalizedPaymentId);
+  const payment = await findPaymentById(env, normalizedPaymentId);
 
   if (!payment) {
     throw createHttpError(404, 'Payment not found');
@@ -185,13 +294,45 @@ export async function refundPayment(paymentId, payload = {}) {
     throw createHttpError(409, 'Only completed payments can be refunded');
   }
 
-  const updates = {
+  const provider = resolveProvider(payment.method);
+  const refundResult = await provider.refund(payment, payload);
+
+  if (refundResult.status !== 'REFUNDED') {
+    throw createHttpError(502, 'Refund provider request failed', {
+      providerRef: refundResult.providerRef || payment.providerRef || null,
+      reason: refundResult.reason || 'Refund failed'
+    });
+  }
+
+  const updated = await updatePaymentDocument(env, normalizedPaymentId, {
     status: PAYMENT_STATUSES.REFUNDED,
+    sagaStatus: PAYMENT_SAGA_STATUSES.COMPENSATED,
+    providerRef: refundResult.providerRef || payment.providerRef || null,
     refundReason: payload.reason || 'Refund requested',
     refundedAt: nowIso(),
     updatedAt: nowIso()
-  };
+  });
 
-  const updatedPayment = await updatePaymentDocument(normalizedPaymentId, updates);
-  return formatPayment(updatedPayment);
+  await recordTransaction(env, normalizedPaymentId, 'REFUND', PAYMENT_STATUSES.REFUNDED, {
+    providerRef: updated.providerRef,
+    reason: payload.reason || 'Refund requested',
+    compensation: true
+  });
+  await publishPaymentEvent(env, PAYMENT_EVENTS.REFUNDED, {
+    ...toPublicPayment(updated),
+    refundReason: payload.reason || 'Refund requested'
+  });
+  await publishSagaEvent(env, PAYMENT_EVENTS.SAGA_COMPENSATED, updated, {
+    stage: 'PaymentSagaCompensated',
+    refundReason: payload.reason || 'Refund requested'
+  });
+  await publishIntegrationEvents(env, [
+    PAYMENT_EVENTS.RIDE_PAYMENT_REFUNDED,
+    PAYMENT_EVENTS.NOTIFICATION_PAYMENT_REFUNDED,
+    PAYMENT_EVENTS.WALLET_LEDGER_COMPENSATION_REQUESTED
+  ], updated, {
+    refundReason: payload.reason || 'Refund requested',
+    stage: 'DownstreamIntegrationReady'
+  });
+  return toPublicPayment(updated);
 }
