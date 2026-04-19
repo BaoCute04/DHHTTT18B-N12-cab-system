@@ -5,9 +5,10 @@ import { errorHandler } from './middlewares/errorHandler.js';
 import { notFoundHandler } from './middlewares/notFound.js';
 import { architectureInfo, healthCheck } from './controllers/paymentController.js';
 
-export function createApp() {
+export function createApp(env) {
   const app = express();
 
+  app.locals.env = env;
   app.use(express.json());
   app.use(requestMeta);
 

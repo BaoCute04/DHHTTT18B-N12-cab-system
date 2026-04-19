@@ -1,45 +1,31 @@
 import { MongoClient } from 'mongodb';
-import { getEnv } from '../config/env.js';
 
 let client;
-let database;
-let paymentsCollection;
+let db;
 
-export async function connectMongo() {
-  if (paymentsCollection) {
-    return paymentsCollection;
+export async function connectMongo(env) {
+  if (!client) {
+    client = new MongoClient(env.mongoUri);
+    await client.connect();
+    db = client.db(env.mongoDbName);
+    console.log(`[payment-service] MongoDB connected: ${env.mongoUri}/${env.mongoDbName}`);
   }
 
-  const { mongoUri, mongoDbName, mongoCollectionName } = getEnv();
-  client = new MongoClient(mongoUri);
-  await client.connect();
-
-  database = client.db(mongoDbName);
-  paymentsCollection = database.collection(mongoCollectionName);
-
-  await paymentsCollection.createIndex({ paymentId: 1 }, { unique: true });
-  await paymentsCollection.createIndex({ idempotencyKey: 1 }, {
-    unique: true,
-    sparse: true
-  });
-
-  return paymentsCollection;
+  return { client, db };
 }
 
-export function getPaymentsCollection() {
-  if (!paymentsCollection) {
-    throw new Error('MongoDB is not connected yet');
+export function getDb() {
+  if (!db) {
+    throw new Error('MongoDB has not been connected yet');
   }
 
-  return paymentsCollection;
+  return db;
 }
 
 export async function closeMongo() {
   if (client) {
     await client.close();
+    client = undefined;
+    db = undefined;
   }
-
-  client = null;
-  database = null;
-  paymentsCollection = null;
 }
