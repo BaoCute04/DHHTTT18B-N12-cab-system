@@ -2,7 +2,7 @@ import PricingRule from '../models/PricingRule.js';
 import SurgeZone from '../models/SurgeZone.js';
 import { logger } from '../utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
-import { getSupplyCount, getDemandCount, recordDemandEvent, getAISurge } from '../utils/redis.js';
+import { getSupplyCount, getDemandCount, recordDemandEvent, getAISurge, saveQuote } from '../utils/redis.js';
 import { latLngToZone } from '../utils/geohash.js';
 
 const formatResponse = (message, data, req) => ({
@@ -71,9 +71,27 @@ export const getQuote = async (req, res) => {
         // 5. Tính tiền cuối cùng (làm tròn lên 1,000 VND)
         const finalAmount = Math.round((baseAmount * surgeMultiplier) / 1000) * 1000;
 
-        logger.info('Quote generated', { reqId, finalAmount, surgeMultiplier, surgeSource, supplyCount, demandCount });
+        // 6. [Tiêu chí 5] Sinh quote_id và lưu snapshot giá vào Redis (TTL 180s)
+        const quoteId = uuidv4();
+        const QUOTE_TTL_SECONDS = 180;
+        await saveQuote(quoteId, {
+            amount: finalAmount,
+            surgeMultiplier,
+            surgeSource,
+            vehicleType: rule.vehicleType,
+            distanceKm,
+            durationMin,
+            pickupLat,
+            pickupLng,
+            zone: latLngToZone(pickupLat, pickupLng),
+            createdAt: new Date().toISOString(),
+        });
+
+        logger.info('Quote generated', { reqId, quoteId, finalAmount, surgeMultiplier, surgeSource, supplyCount, demandCount });
 
         res.status(200).json(formatResponse("Quote generated successfully", {
+            quoteId,
+            expiresIn: QUOTE_TTL_SECONDS,   // giây — client dùng để countdown cho user
             priceSnapshot: {
                 amount: finalAmount,
                 distance: `${distanceKm} km`,

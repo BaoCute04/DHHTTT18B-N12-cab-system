@@ -1,5 +1,6 @@
 import Booking from '../models/Booking.js';
 import messageBroker from '../utils/messageBroker.js';
+import { getAndConsumeQuote } from '../utils/redis.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const formatResponse = (message, data, req) => ({
@@ -28,7 +29,7 @@ export const createBooking = async (req, res) => {
             return res.status(200).json(formatResponse("Booking already exists", existingBooking, req));
         }
 
-        const { userId, pickup, drop, distanceKm, vehicleType, paymentMethod } = req.body;
+        const { userId, pickup, drop, distanceKm, vehicleType, paymentMethod, quoteId } = req.body;
 
         // [TC11] Validation: Thiếu trường bắt buộc
         if (!pickup || pickup.lat === undefined || pickup.lng === undefined) {
@@ -50,6 +51,26 @@ export const createBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid payment method' });
         }
 
+        // [Tiêu chí 5] Validate quote_id — đảm bảo giá estimate ↔ booking nhất quán
+        let lockedPrice = null;
+        if (quoteId) {
+            const quote = await getAndConsumeQuote(quoteId);
+            if (!quote) {
+                // Quote không tồn tại hoặc đã hết hạn (TTL = 3 phút)
+                return res.status(409).json({
+                    success: false,
+                    message: 'Giá đã hết hạn hoặc không hợp lệ. Vui lòng lấy giá mới trước khi đặt xe.',
+                    code: 'QUOTE_EXPIRED'
+                });
+            }
+            lockedPrice = {
+                amount: quote.amount,
+                surgeMultiplier: quote.surgeMultiplier,
+                surgeSource: quote.surgeSource,
+                lockedAt: new Date(),
+            };
+        }
+
         const newBooking = new Booking({
             userId: userId || 'USR-TEMP',
             pickup,
@@ -57,7 +78,15 @@ export const createBooking = async (req, res) => {
             distanceKm,
             vehicleType: vehicleType || 'bike',
             paymentMethod: paymentMethod || 'CASH',
-            idempotencyKey
+            idempotencyKey,
+            quoteId: quoteId || null,
+            lockedPrice,
+            // Nếu có quote → dùng giá lock; nếu không có → amount mặc định = 0 (backward-compatible)
+            priceSnapshot: lockedPrice ? {
+                amount: lockedPrice.amount,
+                currency: 'VND',
+                surgeMultiplier: lockedPrice.surgeMultiplier
+            } : undefined
         });
 
         await newBooking.save();

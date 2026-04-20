@@ -18,6 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import settings
 from app.database import get_mongo_db, get_redis
 from app.serve.surge_predictor import predict_surge
+from app.kafka_producer import publish_surge_updated
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,9 @@ async def _build_live_zones(redis) -> list[dict]:
                 "demand_count": float(demand_count),
                 "avg_speed_kmh": 20.0,   # mặc định — chưa có nguồn dữ liệu tốc độ
                 "rain_indicator": 0,
+                # [Tiêu chí 3] Event flag — mặc định 0 (chưa tích hợp event API)
+                # TODO: query event database để check sự kiện đặc biệt gần zone này
+                "event_flag": 0,
             })
 
         logger.info(
@@ -110,6 +114,15 @@ async def _push_surge_for_all_zones() -> None:
             redis_key = f"surge_zone:{zone_id}"
             await redis.setex(redis_key, settings.surge_redis_ttl, payload)
             pushed.append({"zone": zone_id, "surge": surge})
+
+            # [Tiêu chí 4] Broadcast SurgePriceUpdated lên Kafka
+            # Fail-safe: lỗi Kafka KHÔNG làm crash scheduler
+            await publish_surge_updated(
+                zone_id=zone_id,
+                surge_multiplier=surge,
+                updated_at=now.isoformat(),
+                source="ml-platform",
+            )
 
         logger.info(
             "✅ [Surge Push] %d zones pushed → %s",
