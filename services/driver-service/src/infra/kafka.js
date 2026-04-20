@@ -1,137 +1,104 @@
-/**
- * Kafka Event Publisher for Driver Service
- * Publishes driver location updates and status changes in real-time
- */
+import { Kafka, logLevel } from "kafkajs";
 
-import { Kafka } from 'kafkajs';
+let producer = null;
 
-const kafka = new Kafka({
-  clientId: 'driver-service',
-  brokers: (process.env.KAFKA_BROKERS || 'localhost:9092').split(','),
-  connectionTimeout: 10000,
-  requestTimeout: 30000,
-});
+function parseBrokers(rawBrokers = process.env.KAFKA_BROKERS) {
+  return String(rawBrokers || "")
+    .split(",")
+    .map((broker) => broker.trim())
+    .filter(Boolean);
+}
 
-const producer = kafka.producer({
-  allowAutoTopicCreation: true,
-});
+export async function initializeDriverKafkaProducer(logger = console) {
+  const brokers = parseBrokers();
 
-let isConnected = false;
+  if (brokers.length === 0) {
+    logger.warn?.("[driver-service] Kafka producer disabled: missing KAFKA_BROKERS");
+    return false;
+  }
 
-/**
- * Ensure producer is connected
- */
-async function ensureConnected() {
-  if (!isConnected) {
+  const kafka = new Kafka({
+    clientId: "driver-service",
+    brokers,
+    logLevel: logLevel.NOTHING
+  });
+
+  producer = kafka.producer();
+
+  try {
     await producer.connect();
-    isConnected = true;
-    console.log('[Kafka] Producer connected for driver-service');
+    logger.info?.("[driver-service] Kafka producer connected");
+    return true;
+  } catch (error) {
+    logger.warn?.(`[driver-service] Kafka producer disabled: ${error.message}`);
+    producer = null;
+    return false;
   }
 }
 
-/**
- * Publish driver location updated event
- * @param {Object} driverLocation - { driverId, lat, lng, address, timestamp }
- */
-export async function publishDriverLocationUpdated(driverLocation) {
-  try {
-    await ensureConnected();
+export async function publishDriverLocationUpdate(payload, logger = console) {
+  if (!producer) {
+    return false;
+  }
 
+  try {
     await producer.send({
-      topic: 'driver.location.updated',
+      topic: "driver.location.updated",
       messages: [
         {
-          key: driverLocation.driverId,
-          value: JSON.stringify({
-            driverId: driverLocation.driverId,
-            location: {
-              lat: driverLocation.lat,
-              lng: driverLocation.lng,
-              address: driverLocation.address,
-            },
-            timestamp: driverLocation.timestamp || new Date().toISOString(),
-          }),
-          headers: {
-            'event-type': 'driver-location-update',
-            'service': 'driver-service',
-          },
-        },
-      ],
+          key: payload.driverId,
+          value: JSON.stringify(payload)
+        }
+      ]
     });
-
-    console.log(`[Kafka] Published DriverLocationUpdated for driver ${driverLocation.driverId}`);
+    return true;
   } catch (error) {
-    console.error('[Kafka] Error publishing DriverLocationUpdated:', error.message);
-    throw error;
+    logger.warn?.(`[driver-service] failed to publish location event: ${error.message}`);
+    return false;
   }
 }
 
-/**
- * Publish driver assigned event
- * @param {Object} assignment - { driverId, rideId }
- */
-export async function publishDriverAssigned(assignment) {
+export async function disconnectDriverKafkaProducer() {
+  if (!producer) {
+    return true;
+  }
+
   try {
-    await ensureConnected();
-
-    await producer.send({
-      topic: 'driver.assigned',
-      messages: [
-        {
-          key: assignment.driverId,
-          value: JSON.stringify({
-            driverId: assignment.driverId,
-            rideId: assignment.rideId,
-            timestamp: new Date().toISOString(),
-          }),
-        },
-      ],
-    });
-
-    console.log(`[Kafka] Published DriverAssigned: ${assignment.driverId} -> ride ${assignment.rideId}`);
-  } catch (error) {
-    console.error('[Kafka] Error publishing DriverAssigned:', error.message);
-  }
-}
-
-/**
- * Publish driver status changed event
- * @param {Object} statusChange - { driverId, status, availability }
- */
-export async function publishDriverStatusChanged(statusChange) {
-  try {
-    await ensureConnected();
-
-    await producer.send({
-      topic: 'driver.status.changed',
-      messages: [
-        {
-          key: statusChange.driverId,
-          value: JSON.stringify({
-            driverId: statusChange.driverId,
-            status: statusChange.status,
-            availability: statusChange.availability,
-            timestamp: new Date().toISOString(),
-          }),
-        },
-      ],
-    });
-
-    console.log(`[Kafka] Published DriverStatusChanged: ${statusChange.driverId} -> ${statusChange.status}`);
-  } catch (error) {
-    console.error('[Kafka] Error publishing DriverStatusChanged:', error.message);
-  }
-}
-
-/**
- * Graceful shutdown
- */
-export async function disconnectProducer() {
-  if (isConnected) {
     await producer.disconnect();
-    isConnected = false;
-    console.log('[Kafka] Producer disconnected');
+  } finally {
+    producer = null;
   }
+
+  return true;
 }
 
-export { producer };
+export async function initializeKafkaProducer({ brokers } = {}, logger = console) {
+  if (brokers) {
+    process.env.KAFKA_BROKERS = brokers;
+  }
+  return initializeDriverKafkaProducer(logger);
+}
+
+export async function disconnectKafkaProducer() {
+  return disconnectDriverKafkaProducer();
+}
+
+export async function publishDriverLocationUpdated(driverLocation, logger = console) {
+  const payload = {
+    event: "driver.location.updated",
+    driverId: driverLocation.driverId,
+    rideId: driverLocation.rideId,
+    lat: driverLocation.lat ?? driverLocation.location?.lat,
+    lng: driverLocation.lng ?? driverLocation.location?.lng,
+    address: driverLocation.address ?? driverLocation.location?.address,
+    speed: driverLocation.speed,
+    heading: driverLocation.heading,
+    recordedAt: driverLocation.timestamp || new Date().toISOString()
+  };
+
+  return publishDriverLocationUpdate(payload, logger);
+}
+
+export async function disconnectProducer() {
+  return disconnectDriverKafkaProducer();
+}

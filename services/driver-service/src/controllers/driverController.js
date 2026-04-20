@@ -155,23 +155,24 @@ export async function updateLocation(request, response) {
       return createErrorResponse(response, 500, "Failed to update location", request);
     }
 
-    const rideIdFromPayload = typeof payload.rideId === "string" ? payload.rideId : null;
-    const rideIdFromHeader =
-      typeof request.headers["x-ride-id"] === "string" ? request.headers["x-ride-id"] : null;
-    const rideId = rideIdFromPayload || rideIdFromHeader;
+    const rideId = payload.rideId || request.header("x-ride-id") || null;
+    const targetLocation = payload.targetLocation || payload.pickup || payload.destination || null;
 
     if (rideId) {
-      await publishDriverLocationUpdate({
-        rideId,
-        driverId: request.params.driverId,
-        location: {
+      await publishDriverLocationUpdate(
+        {
+          event: "driver.location.updated",
+          rideId,
+          driverId: request.params.driverId,
+          mode: payload.mode || "to-pickup",
           lat: payload.lat,
-          lng: payload.lng
+          lng: payload.lng,
+          address: payload.address,
+          targetLocation: targetLocation || undefined,
+          recordedAt: new Date().toISOString()
         },
-        speed: typeof payload.speed === "number" ? payload.speed : 0,
-        heading: typeof payload.heading === "number" ? payload.heading : null,
-        timestamp: new Date().toISOString()
-      });
+        console
+      );
     }
 
     return response.json(
