@@ -1,0 +1,27 @@
+{
+  "name": "@cab/eta-tracking-consumer",
+  "version": "1.0.0",
+  "description": "ETA Tracking Consumer - consumes driver location events and recalculates ETAs in real-time",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "eta",
+    "kafka",
+    "consumer",
+    "real-time",
+    "event-driven"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "axios": "^1.6.5",
+    "dotenv": "^17.4.2",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {}
+}

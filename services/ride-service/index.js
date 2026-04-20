@@ -9,6 +9,12 @@ const http = require('http');
 const { createApp } = require('./src/app');
 const { setupWebSocket } = require('./src/realtime/socket');
 const { connectMongo } = require('./src/database/mongoose');
+const {
+  initializeKafkaConsumers,
+  startConsumingEvents,
+  defaultHandlers,
+  disconnectKafkaConsumer,
+} = require('./src/infra/kafka-consumer');
 
 // Create Express app
 const app = createApp();
@@ -27,6 +33,17 @@ async function startServer() {
     console.warn('[MongoDB] Connection skipped or failed:', error.message);
   }
 
+  // ✅ Giữ Kafka (từ stash)
+  try {
+    await initializeKafkaConsumers({
+      brokers: process.env.KAFKA_BROKERS || 'kafka:9092',
+    });
+    await startConsumingEvents(defaultHandlers);
+  } catch (error) {
+    console.warn('[Kafka] Consumer startup skipped or failed:', error.message);
+  }
+
+  // ✅ Dùng port của branch mới (tránh conflict hệ thống)
   const port = process.env.PORT || 3009;
 
   server.listen(port, () => {
@@ -39,5 +56,13 @@ async function startServer() {
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
   });
 }
+
+process.on('SIGINT', async () => {
+  await disconnectKafkaConsumer();
+});
+
+process.on('SIGTERM', async () => {
+  await disconnectKafkaConsumer();
+});
 
 startServer();

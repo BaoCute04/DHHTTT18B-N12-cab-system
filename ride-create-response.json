@@ -1,0 +1,36 @@
+{
+    "success":  true,
+    "message":  "Ride created",
+    "data":  {
+                 "rideId":  "7b13f4f1-25da-403a-9380-3302209ad08f",
+                 "bookingId":  "01c372b4-effe-4e04-a710-8123389dd600",
+                 "userId":  "6f05d729-c7eb-4a02-a992-3b6e66e5cf38",
+                 "driverId":  null,
+                 "status":  "SEARCHING",
+                 "pickup":  {
+                                "lat":  10.773,
+                                "lng":  106.696,
+                                "address":  "Pickup point"
+                            },
+                 "destination":  {
+                                     "lat":  10.785,
+                                     "lng":  106.7,
+                                     "address":  "Destination point"
+                                 },
+                 "currentLocation":  null,
+                 "etaMinutes":  null,
+                 "startedAt":  null,
+                 "completedAt":  null,
+                 "createdAt":  "2026-04-18T11:38:12.534Z",
+                 "updatedAt":  "2026-04-18T11:38:12.534Z",
+                 "id":  "69e36d247173db28fdaed4cd"
+             },
+    "meta":  {
+                 "requestId":  "928b9274-dc9d-4576-b987-bfbe981d1169",
+                 "timestamp":  "2026-04-18T11:38:15.447Z",
+                 "nearbyDrivers":  [
+
+                                   ]
+             },
+    "statusCode":  201
+}

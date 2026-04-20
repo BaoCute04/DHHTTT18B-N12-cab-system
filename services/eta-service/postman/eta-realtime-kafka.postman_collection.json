@@ -1,0 +1,341 @@
+{
+  "info": {
+    "_postman_id": "b3a15732-4f35-4559-9e50-bfc7a92c7e66",
+    "name": "CAB ETA Realtime Kafka Flow",
+    "description": "Postman flow to test end-to-end realtime path: auth token -> seed active ride -> driver location update (Kafka publish) -> verify ETA cache.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "authBaseUrl", "value": "http://localhost:3104" },
+    { "key": "etaBaseUrl", "value": "http://localhost:3110" },
+    { "key": "driverBaseUrl", "value": "http://localhost:3107" },
+    { "key": "otpDestination", "value": "+84901234567" },
+    { "key": "otpRole", "value": "customer" },
+    { "key": "otpChannel", "value": "sms" },
+    { "key": "otpCode", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "rideId", "value": "7b13f4f1-25da-403a-9380-3302209ad08f" },
+    { "key": "driverId", "value": "6f05d729-c7eb-4a02-a992-3b6e66e5cf38" },
+    { "key": "pickupLat", "value": "10.773" },
+    { "key": "pickupLng", "value": "106.696" },
+    { "key": "destLat", "value": "10.785" },
+    { "key": "destLng", "value": "106.700" },
+    { "key": "driverLat", "value": "10.774" },
+    { "key": "driverLng", "value": "106.697" }
+  ],
+  "item": [
+    {
+      "name": "00 Health",
+      "item": [
+        {
+          "name": "[Auth] Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authBaseUrl}}/api/v1/auth/health",
+              "host": ["{{authBaseUrl}}"],
+              "path": ["api", "v1", "auth", "health"]
+            }
+          }
+        },
+        {
+          "name": "[ETA] Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{etaBaseUrl}}/health",
+              "host": ["{{etaBaseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "[Driver] Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{driverBaseUrl}}/health",
+              "host": ["{{driverBaseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Auth Bootstrap",
+      "item": [
+        {
+          "name": "[Auth] OTP Request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 202', function () { pm.response.to.have.status(202); });",
+                  "var body = pm.response.json();",
+                  "var debugCode = body && body.data ? body.data.debugOtpCode : null;",
+                  "if (debugCode) {",
+                  "  pm.collectionVariables.set('otpCode', String(debugCode));",
+                  "  pm.environment.set('otpCode', String(debugCode));",
+                  "}",
+                  "pm.test('otpCode captured', function () { pm.expect(pm.variables.get('otpCode')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"{{otpDestination}}\",\n  \"role\": \"{{otpRole}}\",\n  \"channel\": \"{{otpChannel}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/v1/auth/login/otp/request",
+              "host": ["{{authBaseUrl}}"],
+              "path": ["api", "v1", "auth", "login", "otp", "request"]
+            }
+          }
+        },
+        {
+          "name": "[Auth] OTP Verify + Save Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var token = body && body.data ? (body.data.accessToken || (body.data.tokens && body.data.tokens.accessToken)) : null;",
+                  "pm.test('access token exists', function () { pm.expect(token).to.be.a('string').and.not.empty; });",
+                  "pm.collectionVariables.set('accessToken', token);",
+                  "pm.environment.set('accessToken', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"{{otpDestination}}\",\n  \"role\": \"{{otpRole}}\",\n  \"code\": \"{{otpCode}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/v1/auth/login/otp/verify",
+              "host": ["{{authBaseUrl}}"],
+              "path": ["api", "v1", "auth", "login", "otp", "verify"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Seed Active Ride In ETA",
+      "item": [
+        {
+          "name": "[ETA] Upsert Active Ride",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rideId\": \"{{rideId}}\",\n  \"driverId\": \"{{driverId}}\",\n  \"status\": \"ACTIVE\",\n  \"origin\": {\n    \"lat\": {{pickupLat}},\n    \"lng\": {{pickupLng}},\n    \"address\": \"Pickup\"\n  },\n  \"destination\": {\n    \"lat\": {{destLat}},\n    \"lng\": {{destLng}},\n    \"address\": \"Destination\"\n  },\n  \"vehicleType\": \"car\",\n  \"provider\": \"auto\",\n  \"trafficSensitivity\": \"medium\"\n}"
+            },
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/active-rides",
+              "host": ["{{etaBaseUrl}}"],
+              "path": ["internal", "eta", "active-rides"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Trigger Realtime GPS Event",
+      "item": [
+        {
+          "name": "[Driver] Upsert Driver Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Test Driver\",\n  \"phone\": \"+84900000000\",\n  \"vehicleType\": \"car\",\n  \"vehiclePlate\": \"51F-12345\",\n  \"status\": \"ONLINE\",\n  \"availability\": \"AVAILABLE\",\n  \"location\": {\n    \"lat\": {{driverLat}},\n    \"lng\": {{driverLng}},\n    \"address\": \"Driver profile location\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{driverBaseUrl}}/api/v1/drivers/{{driverId}}",
+              "host": ["{{driverBaseUrl}}"],
+              "path": ["api", "v1", "drivers", "{{driverId}}"]
+            }
+          }
+        },
+        {
+          "name": "[Driver] Update Location + Publish Kafka",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-ride-id", "value": "{{rideId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": {{driverLat}},\n  \"lng\": {{driverLng}},\n  \"address\": \"Driver current location\"\n}"
+            },
+            "url": {
+              "raw": "{{driverBaseUrl}}/api/v1/drivers/{{driverId}}/location",
+              "host": ["{{driverBaseUrl}}"],
+              "path": ["api", "v1", "drivers", "{{driverId}}", "location"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Verify ETA Cache",
+      "item": [
+        {
+          "name": "[ETA] Calculate Estimate (ensure cache)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.test('etaSeconds exists', function () { pm.expect(body.data.etaSeconds).to.be.a('number'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rideId\": \"{{rideId}}\",\n  \"origin\": {\n    \"lat\": {{pickupLat}},\n    \"lng\": {{pickupLng}},\n    \"address\": \"Pickup\"\n  },\n  \"destination\": {\n    \"lat\": {{destLat}},\n    \"lng\": {{destLng}},\n    \"address\": \"Destination\"\n  },\n  \"driverLocation\": {\n    \"lat\": {{driverLat}},\n    \"lng\": {{driverLng}},\n    \"address\": \"Driver current location\"\n  },\n  \"provider\": \"auto\",\n  \"trafficSensitivity\": \"medium\",\n  \"vehicleType\": \"car\"\n}"
+            },
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/estimate",
+              "host": ["{{etaBaseUrl}}"],
+              "path": ["internal", "eta", "estimate"]
+            }
+          }
+        },
+        {
+          "name": "[ETA] Get Cached Estimate by RideId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.test('etaSeconds exists', function () { pm.expect(body.data.etaSeconds).to.be.a('number'); });",
+                  "pm.test('provider exists', function () { pm.expect(body.data.provider).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/{{rideId}}",
+              "host": ["{{etaBaseUrl}}"],
+              "path": ["internal", "eta", "{{rideId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

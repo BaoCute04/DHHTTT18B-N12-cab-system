@@ -20,6 +20,7 @@
     "dev:review": "npm run dev --workspace @cab/review-service",
     "dev:driver-service": "npm run dev --workspace @cab/driver-service",
     "dev:notification": "npm run dev --workspace @cab/notification-service",
+    "dev:eta": "npm run dev --workspace @cab/eta-service",
     "dev:ride": "npm run dev --workspace @cab/ride-service",
     "inspect:topology": "node ./platform/architecture/print-topology.js",
     "inspect:ai": "node ./platform/architecture/print-ai-topology.js",

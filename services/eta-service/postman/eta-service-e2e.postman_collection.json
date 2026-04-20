@@ -1,0 +1,438 @@
+{
+  "info": {
+    "_postman_id": "1b32bc34-ee8a-4277-8138-c43966f5291f",
+    "name": "CAB ETA Service - Internal E2E",
+    "description": "End-to-end Postman flow for internal ETA service: health checks, OTP login from auth-service, token capture, and ETA cache/routing APIs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Health",
+      "item": [
+        {
+          "name": "[ETA] Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{etaBaseUrl}}/health",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[ETA] Ready",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{etaBaseUrl}}/ready",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[Auth] Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{authBaseUrl}}/api/v1/auth/health",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01 Auth Token Bootstrap",
+      "item": [
+        {
+          "name": "[Auth] OTP Request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 202', function () { pm.response.to.have.status(202); });",
+                  "var body = pm.response.json();",
+                  "var debugCode = body && body.data ? body.data.debugOtpCode : null;",
+                  "if (debugCode) {",
+                  "  pm.environment.set('otpCode', String(debugCode));",
+                  "}",
+                  "pm.test('otp code captured in non-production', function () {",
+                  "  pm.expect(pm.environment.get('otpCode')).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"{{otpDestination}}\",\n  \"role\": \"{{otpRole}}\",\n  \"channel\": \"{{otpChannel}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/v1/auth/login/otp/request",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login",
+                "otp",
+                "request"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[Auth] OTP Verify + Save Access Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var token = body && body.data ? (body.data.accessToken || (body.data.tokens && body.data.tokens.accessToken)) : null;",
+                  "pm.test('access token exists', function () { pm.expect(token).to.be.a('string').and.not.empty; });",
+                  "pm.environment.set('accessToken', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"{{otpDestination}}\",\n  \"role\": \"{{otpRole}}\",\n  \"code\": \"{{otpCode}}\"\n}"
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/api/v1/auth/login/otp/verify",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login",
+                "otp",
+                "verify"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 ETA Internal APIs",
+      "item": [
+        {
+          "name": "[ETA] Root Internal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "eta"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[ETA] Upsert Active Ride",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rideId\": \"{{rideId}}\",\n  \"driverId\": \"{{driverId}}\",\n  \"status\": \"ACTIVE\",\n  \"origin\": { \"lat\": {{originLat}}, \"lng\": {{originLng}}, \"address\": \"Pickup point\" },\n  \"destination\": { \"lat\": {{destinationLat}}, \"lng\": {{destinationLng}}, \"address\": \"Destination point\" },\n  \"provider\": \"osrm\",\n  \"trafficSensitivity\": \"medium\",\n  \"vehicleType\": \"car\",\n  \"cacheTtlSeconds\": 86400\n}"
+            },
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/active-rides",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "eta",
+                "active-rides"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[ETA] Calculate Estimate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.test('etaSeconds present', function () {",
+                  "  pm.expect(body.data.etaSeconds).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rideId\": \"{{rideId}}\",\n  \"origin\": { \"lat\": {{originLat}}, \"lng\": {{originLng}}, \"address\": \"Pickup point\" },\n  \"destination\": { \"lat\": {{destinationLat}}, \"lng\": {{destinationLng}}, \"address\": \"Destination point\" },\n  \"provider\": \"osrm\",\n  \"trafficSensitivity\": \"medium\",\n  \"vehicleType\": \"car\",\n  \"cacheTtlSeconds\": 300\n}"
+            },
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/estimate",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "eta",
+                "estimate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[ETA] List Active Rides",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/active-rides",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "eta",
+                "active-rides"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[ETA] Get Active Ride By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/active-rides/{{rideId}}",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "eta",
+                "active-rides",
+                "{{rideId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[ETA] Get Cached Estimate By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{etaBaseUrl}}/internal/eta/{{rideId}}",
+              "host": [
+                "{{etaBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "eta",
+                "{{rideId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
