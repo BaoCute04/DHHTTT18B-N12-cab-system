@@ -1,4 +1,257 @@
+# CAB-BOOKING-SYSTEM
 
+A comprehensive ride-hailing platform built with microservices architecture, featuring AI-powered driver matching, real-time event processing, and scalable cloud deployment.
+
+## 🚀 Features
+
+### Core Services
+- **Auth Service**: User authentication and authorization with JWT and ABAC
+- **Booking Service**: Ride booking and management
+- **Driver Service**: Driver management and location tracking
+- **User Service**: Customer profile management
+- **Payment Service**: Secure payment processing
+- **Review Service**: Rating and feedback system
+- **Ride Service**: Ride lifecycle management
+- **Notification Service**: Multi-channel notifications (SMS, Email, Push)
+- **ML Platform Service**: AI-powered features including driver matching and surge pricing
+
+### AI Features (New)
+- **AI Driver Matching**: XGBoost-based driver selection with rule-based fallback
+  - Real-time scoring of driver candidates
+  - Geo-based filtering using Redis
+  - Confidence scoring and matching reasons
+  - Automatic model retraining with background tasks
+- **Surge Pricing Prediction**: ML-based dynamic pricing
+
+### Infrastructure
+- **API Gateway**: Centralized routing with rate limiting, authentication, and observability
+- **Message Broker**: Kafka for event-driven architecture
+- **Data Layer**: MongoDB, PostgreSQL, Redis for different data patterns
+- **Real-time Processing**: WebSocket support for live updates
+- **Deployment**: Docker Swarm for container orchestration
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Mobile Apps   │    │  Admin Dashboard│    │   API Gateway   │
+│ (React Native)  │    │     (React)     │    │   (Node.js)     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────────┐
+                    │   Microservices     │
+                    │                     │
+                    │ • Auth Service      │
+                    │ • Booking Service   │
+                    │ • Driver Service    │
+                    │ • ML Platform       │
+                    │ • Payment Service   │
+                    │ • etc.              │
+                    └─────────────────────┘
+                                 │
+                    ┌─────────────────────┐
+                    │   Data Layer        │
+                    │                     │
+                    │ • MongoDB (NoSQL)   │
+                    │ • PostgreSQL (SQL)  │
+                    │ • Redis (Cache/Geo) │
+                    └─────────────────────┘
+                                 │
+                    ┌─────────────────────┐
+                    │   Message Broker    │
+                    │                     │
+                    │ • Kafka (Events)    │
+                    └─────────────────────┘
+```
+
+## 📁 Project Structure
+
+```
+CAB-BOOKING-SYSTEM/
+├── apps/                          # Frontend applications
+│   ├── admin-dashboard/           # Admin React app
+│   ├── customer-app/              # Customer React app
+│   └── driver-app/                # Driver React app
+├── services/                      # Backend microservices
+│   ├── auth-service/              # Authentication
+│   ├── booking-service/           # Ride booking
+│   ├── driver-service/            # Driver management
+│   ├── ml-platform-service/       # AI/ML features
+│   ├── payment-service/           # Payments
+│   ├── pricing-service/           # Pricing logic
+│   ├── review-service/            # Reviews
+│   ├── ride-service/              # Ride management
+│   └── user-service/              # User profiles
+├── gateway/                       # API Gateway
+│   └── api-gateway/               # Node.js gateway
+├── data-layer/                    # Data ownership docs
+├── message-broker/                # Kafka topology
+├── infra/                         # Infrastructure configs
+│   ├── docker-compose/            # Local development
+│   └── docker-swarm/              # Production deployment
+├── docs/                          # Documentation
+└── platform/                      # Architecture diagrams
+```
+
+## 🛠️ Setup & Installation
+
+### Prerequisites
+- Docker & Docker Compose
+- Node.js 18+
+- Python 3.10+
+- Git
+
+### Local Development
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd CAB-BOOKING-SYSTEM
+   ```
+
+2. **Start infrastructure**
+   ```bash
+   docker-compose -f infra/docker-compose/docker-compose.local.yml up -d
+   ```
+
+3. **Install dependencies for each service**
+   ```bash
+   # ML Platform Service
+   cd services/ml-platform-service
+   pip install -r requirements.txt
+
+   # API Gateway
+   cd gateway/api-gateway
+   npm install
+
+   # Frontend apps
+   cd apps/admin-dashboard
+   npm install
+   ```
+
+4. **Run services**
+   ```bash
+   # ML Platform Service
+   cd services/ml-platform-service
+   python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+   # API Gateway
+   cd gateway/api-gateway
+   npm start
+
+   # Frontend
+   cd apps/admin-dashboard
+   npm run dev
+   ```
+
+## 🚀 Usage
+
+### AI Driver Matching API
+
+The ML Platform Service provides REST APIs for AI-powered driver matching:
+
+#### Score Driver Candidates
+```bash
+POST /api/v1/matching/score
+Content-Type: application/json
+
+{
+  "rideId": "ride_123",
+  "candidates": [
+    {
+      "driver_id": "driver_1",
+      "distance_km": 2.5,
+      "driver_rating": 4.8,
+      "driver_completed_trips": 150,
+      "driver_acceptance_rate": 0.95,
+      "historical_matching_score": 0.85,
+      "eta_seconds": 300,
+      "surge_multiplier": 1.2,
+      "driver_busy_time": 15
+    }
+  ]
+}
+```
+
+#### Select Best Driver
+```bash
+POST /api/v1/matching/best-driver
+Content-Type: application/json
+
+{
+  "rideId": "ride_123",
+  "candidates": [...],
+  "max_distance_km": 5.0,
+  "pickup_lat": 10.762622,
+  "pickup_lng": 106.660172
+}
+```
+
+#### Feature Ingestion
+```bash
+POST /api/v1/features/ingest
+Content-Type: application/json
+
+{
+  "source": "gps",
+  "zoneId": "zone_quan1",
+  "features": {
+    "hour_of_day": 14,
+    "day_of_week": 2,
+    "demand_count": 25,
+    "supply_count": 18,
+    "avg_speed_kmh": 35.5,
+    "rain_indicator": 0
+  },
+  "label": 1.15
+}
+```
+
+## 🤖 AI/ML Details
+
+### Driver Matching Model
+- **Algorithm**: XGBoost Regressor with monotonic constraints
+- **Features**: Distance, rating, trip history, acceptance rate, ETA, surge, busy time
+- **Training**: Automated retraining every hour using real + synthetic data
+- **Fallback**: Rule-based scoring when model unavailable
+- **Geo Filtering**: Redis geospatial queries for nearby drivers
+
+### Surge Pricing Model
+- **Algorithm**: XGBoost Regressor
+- **Features**: Time, demand/supply ratio, weather, zone metrics
+- **Real-time Updates**: Background scheduler pushes predictions to Redis
+
+## 📊 Monitoring & Health Checks
+
+- **Service Health**: `/health` endpoint for each service
+- **Metrics**: Prometheus-compatible metrics
+- **Logs**: Structured logging with correlation IDs
+- **Tracing**: Distributed tracing support
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Guidelines
+- Follow microservices principles
+- Write tests for new features
+- Update documentation
+- Use conventional commits
+- Ensure Docker compatibility
+
+## 📝 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 📞 Contact
+
+For questions or support, please open an issue in this repository.
 ```
 CAB-BOOKING
 ├─ .dockerignore
