@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     surge_push_interval_seconds: int = 30
     surge_redis_ttl: int = 90  # seconds
 
+    # Matching service
+    kafka_bootstrap_servers: str = "localhost:9092"
+    ride_assigned_topic: str = "ride.assigned"
+    matching_lock_ttl: int = 20
+    matching_cache_ttl: int = 120
+    matching_retrain_interval_seconds: int = 3600
+
     class Config:
         env_file = ".env"
 

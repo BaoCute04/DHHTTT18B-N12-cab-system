@@ -18,6 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import settings
 from app.database import get_mongo_db, get_redis
 from app.serve.surge_predictor import predict_surge
+from app.trainers.matching_trainer import run_matching_training
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ async def _build_live_zones(redis) -> list[dict]:
     Đây là các Geohash zone thực tế do driver-service ghi vào.
     Với mỗi zone: đọc supply count + demand count → làm input feature XGBoost.
     """
+    if redis is None:
+        return []
+
     live_zones = []
     try:
         supply_keys = await redis.keys("supply:zone:*")
@@ -71,10 +75,16 @@ async def _push_surge_for_all_zones() -> None:
     """
     try:
         db = get_mongo_db()
-        redis = get_redis()
+        try:
+            redis = get_redis()
+        except RuntimeError:
+            logger.warning("Redis not available, skipping live zone scan.")
+            redis = None
 
         # ── 1. Ưu tiên zones live từ Redis ───────────────────────────────────
-        zones = await _build_live_zones(redis)
+        zones = []
+        if redis:
+            zones = await _build_live_zones(redis)
 
         # ── 2. Fallback: zones từ MongoDB ─────────────────────────────────────
         if not zones:
@@ -97,28 +107,40 @@ async def _push_surge_for_all_zones() -> None:
             zone_id = zone.get("zoneId", "zone_unknown")
             surge = predict_surge(zone, settings.model_store_path)
 
-            payload = json.dumps(
-                {
-                    "multiplier": surge,
-                    "zoneId": zone_id,
-                    "updatedAt": now.isoformat(),
-                    "source": "ml-platform",
-                },
-                ensure_ascii=False,
+            if redis:
+                payload = json.dumps(
+                    {
+                        "multiplier": surge,
+                        "zoneId": zone_id,
+                        "updatedAt": now.isoformat(),
+                        "source": "ml-platform",
+                    },
+                    ensure_ascii=False,
+                )
+
+                redis_key = f"surge_zone:{zone_id}"
+                await redis.setex(redis_key, settings.surge_redis_ttl, payload)
+                pushed.append({"zone": zone_id, "surge": surge})
+            else:
+                logger.info("Redis not available, skipping surge push for zone=%s surge=%.2f", zone_id, surge)
+
+        if pushed:
+            logger.info(
+                "✅ [Surge Push] %d zones pushed → %s",
+                len(pushed),
+                pushed,
             )
-
-            redis_key = f"surge_zone:{zone_id}"
-            await redis.setex(redis_key, settings.surge_redis_ttl, payload)
-            pushed.append({"zone": zone_id, "surge": surge})
-
-        logger.info(
-            "✅ [Surge Push] %d zones pushed → %s",
-            len(pushed),
-            pushed,
-        )
 
     except Exception as exc:
         logger.error("❌ [Surge Push] Task failed: %s", exc, exc_info=True)
+
+
+async def _retrain_matching_model() -> None:
+    try:
+        result = await run_matching_training()
+        logger.info("✅ Matching retrain completed: %s", result)
+    except Exception as exc:
+        logger.error("❌ Matching retrain failed: %s", exc, exc_info=True)
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -136,6 +158,19 @@ async def start_scheduler() -> None:
         "✅ Surge scheduler started (interval=%ds, TTL=%ds).",
         settings.surge_push_interval_seconds,
         settings.surge_redis_ttl,
+    )
+
+    _scheduler.add_job(
+        _retrain_matching_model,
+        trigger="interval",
+        seconds=settings.matching_retrain_interval_seconds,
+        id="matching_retrain_job",
+        replace_existing=True,
+        next_run_time=datetime.now(tz=timezone.utc),
+    )
+    logger.info(
+        "✅ Matching retrain scheduler started (interval=%ds).",
+        settings.matching_retrain_interval_seconds,
     )
 
 

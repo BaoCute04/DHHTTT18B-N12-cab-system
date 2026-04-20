@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.database import connect_db, close_db
 from app.tasks.scheduler import start_scheduler, stop_scheduler
 from app.routers import health, features, training
+from app.routers.matching import router as matching_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,4 +49,9 @@ app.include_router(
     training.router,
     prefix="/api/v1/training",
     tags=["Model Training"],
+)
+app.include_router(
+    matching_router,
+    prefix="/api/v1/matching",
+    tags=["AI Matching"],
 )
