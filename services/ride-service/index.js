@@ -7,7 +7,6 @@ require('dotenv').config();
 
 const http = require('http');
 const { createApp } = require('./src/app');
-const { setupWebSocket } = require('./src/realtime/socket');
 const { connectMongo } = require('./src/database/mongoose');
 
 // Create Express app
@@ -16,15 +15,19 @@ const app = createApp();
 // Create HTTP server
 const server = http.createServer(app);
 
-// Setup WebSocket
-const { wss } = setupWebSocket(server);
-
 async function startServer() {
   try {
     await connectMongo();
     console.log('[MongoDB] Connected');
   } catch (error) {
     console.warn('[MongoDB] Connection skipped or failed:', error.message);
+  }
+
+  try {
+    const messageBroker = require('./src/utils/messageBroker');
+    await messageBroker.connect();
+  } catch (error) {
+    console.warn('[Kafka] Connection skipped or failed:', error.message);
   }
 
   const port = process.env.PORT || 3109;
@@ -35,7 +38,7 @@ async function startServer() {
     console.log(`Port: ${port}`);
     console.log(`REST API: http://localhost:${port}/api/v1/rides`);
     console.log(`Health: http://localhost:${port}/health`);
-    console.log(`WebSocket: ws://localhost:${port}`);
+    console.log(`Realtime events: Kafka -> notification-service`);
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
   });
 }

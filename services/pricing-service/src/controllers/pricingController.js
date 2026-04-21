@@ -2,6 +2,8 @@ import PricingRule from '../models/PricingRule.js';
 import SurgeZone from '../models/SurgeZone.js';
 import { logger } from '../utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getSupplyCount, getDemandCount, recordDemandEvent, getAISurge } from '../utils/redis.js';
+import { latLngToZone } from '../utils/geohash.js';
 
 const formatResponse = (message, data, req) => ({
     success: true, message, data,
@@ -12,37 +14,64 @@ const formatResponse = (message, data, req) => ({
 });
 
 export const getQuote = async (req, res) => {
-    const reqId = req.headers['x-request-id'];
+    const reqId = req.headers['x-request-id'] || uuidv4();
     try {
-        // 1. Nhận thêm demandIndex và supplyIndex từ request (gán mặc định là 1 nếu bỏ trống)
-        const { pickupAddress, distanceKm, durationMin, vehicleType, demandIndex = 1, supplyIndex = 1 } = req.body;
-        logger.info('Received quote request', { reqId, vehicleType, distanceKm, demandIndex, supplyIndex });
+        // 1. Nhận tọa độ điểm đón + thông tin cuốc xe
+        const { pickupLat, pickupLng, pickupAddress, distanceKm, durationMin, vehicleType } = req.body;
+        logger.info('Received quote request', { reqId, vehicleType, distanceKm, pickupLat, pickupLng });
 
-        // 2. Lấy giá cơ bản từ DB (Phần này giữ nguyên)
+        // 2. Lấy giá cơ bản từ DB
         let rule = await PricingRule.findOne({ vehicleType }) || await PricingRule.findOne({ vehicleType: 'standard' });
         if (!rule) throw new Error('Chưa cấu hình giá trong DB');
 
         const baseAmount = rule.baseFare + (distanceKm * rule.perKm) + (durationMin * rule.perMinute);
-        
-        // 3. TÍNH TOÁN SURGE THEO CÔNG THỨC (Cầu / Cung)
-        let surgeMultiplier = 1.0;
 
-        // Luật số 2: Không bao giờ chia cho 0 (Tránh sập hệ thống)
-        if (supplyIndex <= 0) {
-            logger.warn('Khu vực không có tài xế (supply = 0). Áp dụng hệ số an toàn 1.0', { reqId });
-            surgeMultiplier = 1.0;
-        } else {
-            // Tính tỷ lệ Cầu / Cung
-            const rawSurge = demandIndex / supplyIndex;
-            
-            // Luật số 1: Giá không bao giờ giảm dưới mức gốc (surge >= 1.0)
-            surgeMultiplier = Math.max(1.0, rawSurge);
+        // 3. Đọc Supply trước để kiểm tra trạng thái khả dụng của tài xế
+        const supplyCount = await getSupplyCount(pickupLat, pickupLng);
+
+        // ── Business Rule 1: KHÔNG CÓ TÀI XẾ ──────────────────────────────────
+        if (supplyCount <= 0) {
+            const zone = latLngToZone(pickupLat, pickupLng);
+            logger.warn('Khu vực không có tài xế active. Hủy báo giá.', { reqId, zone });
+            // Trả về lỗi luôn để Client hiển thị thông báo
+            return res.status(503).json({
+                success: false,
+                message: 'Không có tài xế trong khu vực hoạt động. Vui lòng thử lại sau.'
+            });
         }
-        
-        // 4. Tính ra cục tiền cuối cùng
+
+        // Nếu qua bước trên -> Chắc chắn đang CÓ tài xế (supply > 0)
+        await recordDemandEvent(pickupLat, pickupLng, reqId);
+        const demandCount = await getDemandCount(pickupLat, pickupLng);
+
+        // 4. Tính Surge — AI XGBoost & Fallback
+        let surgeMultiplier = 1.0;
+        let surgeSource = 'formula-fallback';
+
+        // ── Business Rule 2: Nhu cầu cực thấp (chỉ 1 mình user báo giá) ───────
+        if (demandCount <= 1 && supplyCount > 0) {
+            surgeMultiplier = 1.0;
+            surgeSource = 'rule-low-demand';
+            logger.info('Demand thấp → surge cố định 1.0', { reqId });
+        }
+        else {
+            const aiSurge = await getAISurge(pickupLat, pickupLng);
+            if (aiSurge !== null) {
+                surgeMultiplier = aiSurge;
+                surgeSource = 'ai-xgboost';
+                logger.info('Surge từ AI XGBoost', { reqId, surgeMultiplier, demandCount, supplyCount });
+            } else {
+                surgeMultiplier = Math.max(1.0, demandCount / supplyCount);
+                surgeSource = 'formula-fallback';
+                logger.info('Surge từ công thức demand/supply (AI chưa sẵn sàng)', { reqId, surgeMultiplier });
+            }
+        }
+
+
+        // 5. Tính tiền cuối cùng (làm tròn lên 1,000 VND)
         const finalAmount = Math.round((baseAmount * surgeMultiplier) / 1000) * 1000;
 
-        logger.info('Quote generated', { reqId, finalAmount });
+        logger.info('Quote generated', { reqId, finalAmount, surgeMultiplier, surgeSource, supplyCount, demandCount });
 
         res.status(200).json(formatResponse("Quote generated successfully", {
             priceSnapshot: {
@@ -51,11 +80,12 @@ export const getQuote = async (req, res) => {
                 duration: `${durationMin} mins`,
                 surgeMultiplier: surgeMultiplier,
                 vehicleType: rule.vehicleType,
-                // Trả về để bạn dòm trên Postman cho dễ hình dung
-                metrics: { 
-                    demand: demandIndex, 
-                    supply: supplyIndex 
-                } 
+                metrics: {
+                    supply: supplyCount,
+                    demand: demandCount,
+                    zone: latLngToZone(pickupLat, pickupLng),
+                    surgeSource  // 'ai-xgboost' hoặc 'formula-fallback'
+                }
             }
         }, req));
     } catch (error) {

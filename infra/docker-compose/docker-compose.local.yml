@@ -96,6 +96,27 @@ services:
       - auth-data
       - cab-broker
 
+  ml-platform-service:
+    build:
+      context: ../..
+      dockerfile: services/ml-platform-service/Dockerfile
+    image: cab-ml-platform:local
+    container_name: cab-ml-platform
+    env_file:
+      - ../../services/ml-platform-service/.env.docker
+    ports:
+      - "8000:8000"
+    volumes:
+      - cab_ml_model_store:/app/model_store
+    depends_on:
+      ml-mongodb:
+        condition: service_started
+      ml-redis:
+        condition: service_started
+    networks:
+      - cab-services
+      - ml-platform-data
+
   pricing-service:
     build:
       context: ../..
@@ -111,9 +132,12 @@ services:
         condition: service_started
       kafka:
         condition: service_started
+      ml-redis:
+        condition: service_started
     networks:
       - cab-services
       - pricing-data
+      - ml-platform-data   # đọc surge_zone:* keys từ Redis của ML Platform
       - cab-broker
 
   user-service:
@@ -168,10 +192,13 @@ services:
         condition: service_started
       kafka:
         condition: service_started
+      ml-redis:
+        condition: service_started
     networks:
       - cab-services
       - driver-data
       - cab-broker
+      - ml-platform-data   # ghi supply:zone:* keys vào Redis của ML Platform
 
   notification-service:
     build:
@@ -237,6 +264,8 @@ services:
     volumes:
       - cab_auth_postgres_data:/var/lib/postgresql/data
       - ../../services/auth-service/sql/schema.sql:/docker-entrypoint-initdb.d/001-auth-schema.sql:ro
+    # 002: Đổ dữ liệu mẫu (Cần thêm vào)
+      - ../../database_test/auth-seed.sql:/docker-entrypoint-initdb.d/002-auth-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d cab_booking_auth"]
       interval: 5s
@@ -266,6 +295,10 @@ services:
       - "5432"
     volumes:
       - cab_user_postgres_data:/var/lib/postgresql/data
+      # 1. Tạo bảng trước
+      - ../../services/user-service/sql/schema.sql:/docker-entrypoint-initdb.d/001-user-schema.sql:ro
+      # 2. Đổ dữ liệu mẫu sau
+      - ../../database_test/user-seed.sql:/docker-entrypoint-initdb.d/002-user-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d cab_booking_user"]
       interval: 5s
@@ -281,8 +314,30 @@ services:
       - "27017"
     volumes:
       - cab_pricing_mongodb_data:/data/db
+      #đổ dữ liệu vào
+      - ../../database_test/pricing-seed.js:/docker-entrypoint-initdb.d/pricing-seed.js:ro
     networks:
       - pricing-data
+
+  ml-mongodb:
+    image: mongo:7
+    container_name: cab-ml-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - cab_ml_mongodb_data:/data/db
+    networks:
+      - ml-platform-data
+
+  ml-redis:
+    image: redis:7-alpine
+    container_name: cab-ml-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - cab_ml_redis_data:/data
+    networks:
+      - ml-platform-data
 
   booking-mongodb:
     image: mongo:7
@@ -291,6 +346,7 @@ services:
       - "27017"
     volumes:
       - cab_booking_mongodb_data:/data/db
+      - ../../database_test/booking-seed.js:/docker-entrypoint-initdb.d/booking-seed.js:ro
     networks:
       - booking-data
 
@@ -301,6 +357,7 @@ services:
       - "27017"
     volumes:
       - cab_driver_mongodb_data:/data/db
+      - ../../database_test/driver-seed.js:/docker-entrypoint-initdb.d/driver-seed.js:ro
     networks:
       - driver-data
 
@@ -390,6 +447,9 @@ volumes:
   cab_ride_mongodb_data:
   cab_ride_redis_data:
   cab_kafka_data:
+  cab_ml_mongodb_data:
+  cab_ml_redis_data:
+  cab_ml_model_store:
 
 networks:
   cab-edge:
@@ -403,3 +463,4 @@ networks:
   driver-data:
   notification-data:
   ride-data:
+  ml-platform-data:

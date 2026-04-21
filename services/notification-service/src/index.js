@@ -1,43 +1,62 @@
-import { loadNotificationEnv } from "./load-env.js";
-import { createNotificationApp } from "./app.js";
+import express from 'express';
+import { getEnv } from './config/env.js';
+import { listNotifications } from './store/notificationStore.js';
+import { startNotificationConsumer, stopNotificationConsumer } from './events/paymentConsumer.js';
 
-loadNotificationEnv();
+const env = getEnv();
+const app = express();
+app.use(express.json());
 
-async function main() {
-  const runtime = await createNotificationApp();
-  const port = Number(process.env.PORT || runtime.manifest.port);
-
-  const server = runtime.app.listen(port, () => {
-    console.log(`[${runtime.manifest.key}] listening on port ${port}`);
+app.get('/health', (_req, res) => {
+  res.json({
+    success: true,
+    message: 'Notification service is healthy',
+    data: {
+      service: env.serviceName,
+      kafkaEnabled: env.kafkaEnabled,
+      paymentTopic: env.paymentTopic
+    }
   });
+});
 
-  async function shutdown() {
-    await runtime.close();
+app.get('/architecture', (_req, res) => {
+  res.json({
+    success: true,
+    message: 'Notification service choreography role',
+    data: {
+      service: env.serviceName,
+      responsibility: 'Consume payment events and create user-facing notifications for choreography flow 9.5/9.5.1',
+      consumedTopics: [
+        'payment.completed',
+        'payment.failed',
+        'payment.refunded',
+        'notification.payment.completed',
+        'notification.payment.failed',
+        'notification.payment.refunded'
+      ]
+    }
+  });
+});
 
-    await new Promise((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+app.get('/api/v1/notifications', (req, res) => {
+  const userId = req.query.userId || null;
+  res.json({ success: true, message: 'Notifications fetched', data: listNotifications(userId) });
+});
 
-        resolve();
-      });
-    });
+const server = app.listen(env.port, async () => {
+  console.log(`[notification-service] listening on port ${env.port}`);
+  try {
+    await startNotificationConsumer(env);
+  } catch (error) {
+    console.error('[notification-service] failed to start payment consumer', error);
   }
+});
 
-  process.on("SIGINT", async () => {
-    await shutdown();
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    await shutdown();
-    process.exit(0);
-  });
+async function shutdown(signal) {
+  console.log(`[notification-service] received ${signal}, shutting down...`);
+  await stopNotificationConsumer();
+  server.close(() => process.exit(0));
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

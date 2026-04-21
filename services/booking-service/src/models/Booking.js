@@ -1,97 +1,55 @@
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
-
-// ------------------------------------------------------------------------
-// SCHEMA PHỤ: Định nghĩa cấu trúc chuẩn cho Tọa độ & Địa chỉ
-// ------------------------------------------------------------------------
 const locationSchema = new mongoose.Schema({
-  lat: { type: Number, required: true },     // Vĩ độ (Ví dụ: 10.762622)
-  lng: { type: Number, required: true },     // Kinh độ (Ví dụ: 106.660172)
-  address: { type: String, required: true }  // Địa chỉ dạng text (Ví dụ: "Quận 1, TP.HCM")
-}, { _id: false }); // _id: false để MongoDB không tự tạo ID phụ cho object con này
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true }
+}, { _id: false });
 
-
-// ------------------------------------------------------------------------
-// SCHEMA CHÍNH: Cấu trúc của một Chuyến xe (Booking)
-// ------------------------------------------------------------------------
 const bookingSchema = new mongoose.Schema({
+    // Định danh
+    bookingId: { type: String, default: uuidv4, unique: true, index: true },
+    userId: { type: String, required: true, index: true },
 
-  // 1. Thông tin định danh
-  bookingId: {
-    type: String,
-    default: uuidv4,
-    unique: true,
-    index: true
-  }, // Mã ID duy nhất của chuyến đi (Tự động sinh ra dạng UUID)
+    // Lộ trình (Bám sát TC3, TC11)
+    pickup: { type: locationSchema, required: true },
+    drop: { type: locationSchema, required: true },
+    distanceKm: { type: Number, required: true },
 
-  userId: {
-    type: String,
-    required: true,
-    index: true
-  }, // Mã ID của khách hàng đặt xe (Dùng để query lịch sử chuyến đi của user)
+    // Thông tin dịch vụ (Bám sát TC14)
+    vehicleType: {
+        type: String,
+        enum: ['bike', 'car', 'car_plus'],
+        default: 'bike'
+    },
+    paymentMethod: {
+        type: String,
+        required: true,
+        enum: ['CASH', 'CREDIT_CARD', 'E_WALLET'],
+        default: 'CASH'
+    },
 
-  // 2. Thông tin Lộ trình
-  pickup: {
-    type: locationSchema,
-    required: true
-  }, // Điểm đón khách (Sử dụng locationSchema đã định nghĩa ở trên)
+    // Giá cước
+    priceSnapshot: {
+        amount: { type: Number, default: 0 },
+        currency: { type: String, default: 'VND' },
+        surgeMultiplier: { type: Number, default: 1.0 }
+    },
 
-  destination: {
-    type: locationSchema,
-    required: true
-  }, // Điểm đến/Điểm trả khách
+    // Trạng thái (Mặc định REQUESTED theo TC6)
+    status: {
+        type: String,
+        enum: ['REQUESTED', 'SEARCHING_DRIVER', 'ACCEPTED', 'CANCELLED', 'FAILED', 'COMPLETED'],
+        default: 'REQUESTED'
+    },
 
-  // 3. Thông tin Loại xe & Giá cước
-  vehicleType: {
-    type: String,
-    required: true,
-    enum: ['bike', 'car', 'car_plus'] // Chỉ cho phép các loại xe được định nghĩa sẵn
-  }, // Loại phương tiện khách chọn
+    driverId: { type: String, default: null },
+    rideId: { type: String, default: null },
 
-  priceSnapshot: {
-    amount: { type: Number, required: true }, // Số tiền cước (Ví dụ: 45000)
-    currency: { type: String, default: 'VND' }, // Loại tiền tệ (Mặc định là VNĐ)
-    surgeMultiplier: { type: Number, default: 1.0 } // Hệ số nhân giá lúc cao điểm (Mặc định x1.0 là bình thường)
-  }, // "Bản chụp" giá tiền tại thời điểm khách bấm đặt xe (để đảm bảo giá không bị đổi giữa chừng)
-
-  // 4. Trạng thái chuyến đi
-  status: {
-    type: String,
-    enum: [
-      'CREATED',          // Mới tạo yêu cầu đặt xe
-      'SEARCHING_DRIVER', // Hệ thống đang tìm tài xế xung quanh
-      'ASSIGNED',         // Đã tìm thấy và gán tài xế thành công
-      'CANCELLED',        // Chuyến đi bị hủy (bởi khách hoặc tài xế)
-      'EXPIRED',          // Hết thời gian tìm tài xế mà không có ai nhận
-      'COMPLETED'         // Chuyến đi đã hoàn thành an toàn
-    ],
-    default: 'CREATED'    // Mặc định khi vừa lưu vào DB sẽ là CREATED
-  },
-
-  // 5. Thông tin liên kết (Sẽ được cập nhật sau khi tìm được tài xế)
-  driverId: {
-    type: String,
-    default: null
-  }, // ID của tài xế nhận chuyến (Lúc mới tạo thì chưa có tài xế nên để null)
-
-  rideId: {
-    type: String,
-    default: null
-  }, // ID của chuyến đi thực tế bên Ride Service sinh ra (Lúc mới tạo cũng là null)
-
-  // 6. Kỹ thuật chống trùng lặp (Idempotency)
-  idempotencyKey: {
-    type: String,
-    required: true,
-    unique: true
-  } // Chuỗi mã duy nhất do App khách hàng gửi lên.
-    // Dùng để chặn lỗi: Khách hàng bấm nút "Đặt xe" 2 lần liên tục do mạng lag,
-    // DB sẽ dựa vào key này để biết là cùng 1 thao tác và không tạo ra 2 cuốc xe.
-
+    // Chống trùng lặp (TC19)
+    idempotencyKey: { type: String, required: true, unique: true }
 }, {
-  timestamps: true // Tự động sinh ra 2 trường: createdAt (Thời gian tạo) và updatedAt (Thời gian cập nhật cuối cùng)
+    timestamps: true
 });
-
 
 export default mongoose.model('Booking', bookingSchema);

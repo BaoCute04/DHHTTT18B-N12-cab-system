@@ -15,6 +15,7 @@ function createResponse({
   success,
   message,
   data = null,
+  meta = {},
   requestId = generateRequestId(),
   statusCode = 200,
 }) {
@@ -25,6 +26,7 @@ function createResponse({
     meta: {
       requestId,
       timestamp: new Date().toISOString(),
+      ...meta,
     },
     statusCode,
   };
@@ -65,11 +67,22 @@ async function createRide(req, res) {
       destination,
     });
 
+    let nearbyDrivers = [];
+
+    try {
+      nearbyDrivers = await locationService.findNearbyDrivers(pickup, 5, 10);
+    } catch (error) {
+      console.warn('[createRide] nearby driver lookup skipped:', error.message);
+    }
+
     return res.status(201).json(
       createResponse({
         success: true,
         message: 'Ride created',
         data: ride.toJSON(),
+        meta: {
+          nearbyDrivers,
+        },
         requestId,
         statusCode: 201,
       })
