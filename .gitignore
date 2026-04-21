@@ -17,7 +17,7 @@ rtk.exe
 !.agents/skills/cab-security-audit/
 
 .sisyphus/
-skills/
+/skills/
 skills-lock.json
 CAB_V2.md
 images
