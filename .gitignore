@@ -9,12 +9,19 @@ dist/
 npm-debug.log*
 
 rtk.exe
+
+# Ignore all in .agents but allow the specific security audit skill
 .agents/*
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/cab-security-audit/
+
 .sisyphus/
 skills/
 skills-lock.json
 CAB_V2.md
 images
+markitdown/
+*.docx
+~$*.docx
+CAB-BOOKING-SYSTEM.docx
