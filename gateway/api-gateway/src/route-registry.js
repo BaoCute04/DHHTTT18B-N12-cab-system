@@ -8,6 +8,7 @@ const familyRoleMap = {
   "booking-service": ["Customer", "Admin"],
   "ride-service": ["Customer", "Driver", "Admin"],
   "pricing-service": ["Customer", "Driver", "Admin"],
+  "matching-service": ["Customer", "Driver", "Admin"],
   "payment-service": ["Customer", "Admin"],
   "notification-service": ["Customer", "Driver", "Admin"],
   "review-service": ["Customer", "Driver", "Admin"]

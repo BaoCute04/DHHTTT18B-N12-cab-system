@@ -22,6 +22,8 @@ services:
         condition: service_started
       pricing-service:
         condition: service_started
+      matching-service:
+        condition: service_started
       review-service:
         condition: service_started
       driver-service:
@@ -96,14 +98,14 @@ services:
       - auth-data
       - cab-broker
 
-  ml-platform-service:
+  matching-service:
     build:
       context: ../..
-      dockerfile: services/ml-platform-service/Dockerfile
-    image: cab-ml-platform:local
-    container_name: cab-ml-platform
+      dockerfile: services/matching-service/Dockerfile
+    image: cab-matching-service:local
+    container_name: cab-matching-service
     env_file:
-      - ../../services/ml-platform-service/.env.docker
+      - ../../services/matching-service/.env.docker
     ports:
       - "8000:8000"
     volumes:
@@ -113,9 +115,12 @@ services:
         condition: service_started
       ml-redis:
         condition: service_started
+      kafka:
+        condition: service_started
     networks:
       - cab-services
       - ml-platform-data
+      - cab-broker
 
   pricing-service:
     build:

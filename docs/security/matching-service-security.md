@@ -1,4 +1,4 @@
-# CAB-BOOKING Security Review Workflow ? WORKFLOW 03 — DRIVER-SERVICE
+# CAB-BOOKING Security Review Workflow ? WORKFLOW 11 — MATCHING-SERVICE
 
 Ngày tạo: `2026-04-20`
 
@@ -203,171 +203,205 @@ Phạm vi tài liệu này là tạo một bộ workflow thực chiến để t�
 | ETA | Expected | ETA prediction | poisoned location input, unsafe fallback, key leak | Redis Geo expected, routing API expected, ride module | GPS schema, cache TTL, external API safety |
 | ML Platform | Expected | Feature store, training, serving | unauth serving, data leak, poisoning | feature store, model serving API, AI topology | inference auth, dataset access, audit lifecycle |
 
-## 6. WORKFLOW 03 — DRIVER-SERVICE
+## 14. WORKFLOW 11 — MATCHING-SERVICE
 
 ### Service Security Context
 
-- Business role: quản lý hồ sơ tài xế, trạng thái online/offline, location update, driver availability.
-- Security role: bảo vệ profile/KYC/license/PII của tài xế, ngăn privilege escalation và status abuse.
+- Business role: quản lý feature store, training pipeline, model serving API cho matching, surge pricing, ETA prediction.
+- Security role: chặn dataset leak, poisoned training path, unauth model serving, secret leak, debug endpoint exposure.
 - Inbound interfaces:
-  - `GET /available`
-  - `GET /:driverId`
-  - `PATCH /:driverId`
-  - `PATCH /:driverId/location`
-  - `POST /:driverId/go-online`
-  - `POST /:driverId/go-offline`
-- Outbound dependencies: MongoDB, gateway, Kafka expected, ride-service expected.
-- Dữ liệu nhạy cảm: phone, vehicle/license info, location, approval/KYC-related profile.
+  - Observed runtime: chưa có service runtime riêng trong `services/`.
+  - Evidence topology ở `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`, `platform/node/ai-layer.js`.
+  - Target architecture: feature store, model training, model serving API, admin/debug/model management path.
+- Outbound dependencies: feature store, model training, model serving API, driver/booking/pricing data sources, trip history, ratings feedback.
+- Dữ liệu nhạy cảm: GPS/location features, trip history, ratings, derived features, model artifacts, serving credentials.
 - Observed in repo:
-  - `services/driver-service/src/controllers/driverController.js`
-  - `services/driver-service/src/models/Driver.js`
-  - `services/driver-service/src/utils/index.js`
+  - `platform/architecture/ai-topology.js`
+  - `platform/ml/feature-store-topology.json`
+  - `platform/node/ai-layer.js`
 - Expected by CAB architecture:
-  - Client/edge đi qua `HTTPS/TLS 1.3`, WAF, rate limiting theo `IP/user/device`, abuse protection ở gateway theo `platform/architecture/security-topology.js`.
-  - Authz không chỉ có RBAC/ABAC/ownership mà còn có `scope` và `permission` theo gateway security profile.
-  - ABAC theo KYC/account/ride state, audit admin action, centralized logging, correlation fields, SIEM, alerting.
-  - Data security gồm encryption in-transit, encryption at-rest, masking dữ liệu nhạy cảm.
-  - Realtime GPS chuẩn kiến trúc đi theo `Driver App -> WebSocket gateway -> ride-service -> Redis Geo -> Kafka`, không chỉ HTTP patch trực tiếp.
-  - Event `driver.assigned` và `driver.location.updated` có trong kiến trúc với producer là `driver-service` theo `message-broker/kafka/topology.json` và `platform/architecture/event-contracts.js`.
+  - feature store, training pipeline, serving API, dataset access control, inference auth, model lifecycle audit.
 - Preliminary repo-backed concerns:
-  - `driver-service` runtime chưa thấy auth/role/ownership/scope/permission guard trong service.
-  - `driver-service` runtime chưa thấy upload tài liệu, KYC, audit path, SIEM hook, alerting.
-  - `driver-service` runtime hiện dùng HTTP location update; chưa thấy WebSocket GPS, Redis Geo, Kafka producer trong service này.
+  - Observed runtime: đã có `services/matching-service/*` với FastAPI runtime, scheduler, model training, matching inference và feature ingestion.
+  - Observed runtime differs from architecture: service hiện gom `feature store`, `training`, `matching inference` và background surge push vào cùng một runtime; `Model Serving API` vẫn chưa tách control plane riêng như sơ đồ đích.
+  - Missing evidence: dataset access policy, secret handling, inference auth boundary, rollback control, model admin management.
+
+### Runtime vs Architecture Boundary
+
+- `Observed runtime`
+  - `services/matching-service/*` là runtime FastAPI thật cho AI matching.
+  - `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`, `platform/node/ai-layer.js` vẫn là artifact mô tả scope AI/ML.
+  - `services/matching-service/app/routers/features.py`, `services/matching-service/app/routers/training.py`, `services/matching-service/app/routers/matching.py` cho thấy feature ingestion, training và matching inference đã tồn tại.
+- `Target architecture`
+  - Feature Store
+  - Model Training
+  - Model Serving API
+  - Dataset access control
+  - Model publish / rollback / admin-debug-management
+- `Observed runtime differs from architecture`
+  - chưa có `Model Serving API` tách riêng cho toàn AI layer
+  - ETA/Surge/Matching chưa tách thành các service/model-serving boundary độc lập hoàn toàn như sơ đồ AI/ML đích
+  - chưa có model lifecycle control plane riêng
 
 ### Evidence Status Labels
 
 - `Implemented`: control có evidence rõ trong code/config/test/runtime artifact của repo.
-- `Expected by architecture`: control xuất hiện trong tài liệu kiến trúc bảo mật/Zero Trust/realtime nhưng chưa thấy runtime evidence đủ mạnh.
+- `Expected by architecture`: control xuất hiện trong topology/doc kiến trúc nhưng chưa có runtime evidence đủ mạnh.
 - `Missing evidence`: chưa có đủ artifact để kết luận control tồn tại hoặc hoạt động đúng.
-- `Observed runtime differs from architecture`: runtime hiện tại đi khác hướng kiến trúc chuẩn; phải ghi rõ chênh lệch, không mô tả như requirement runtime đang có sẵn.
+- `Observed runtime differs from architecture`: runtime hiện tại đi khác kiến trúc đích; phải ghi thẳng chỗ lệch, không mô tả như implementation đã tồn tại.
 
 ### Trust Boundaries
 
-- `Driver/Admin -> Gateway -> driver-service`
-- `driver-service -> MongoDB`
-- `driver-service -> broker` cho assignment/location events
-- `driver-service -> ride-service` hoặc user-service expected
-- `Driver App -> WebSocket gateway -> ride-service -> Redis Geo -> Kafka` là realtime trust path theo kiến trúc chuẩn
+- `Observed runtime`: architecture metadata -> `platform/node/ai-layer.js` response headers
+- `Target architecture`: `booking/driver/pricing/review/trip data -> feature store`
+- `Target architecture`: `feature store -> model training`
+- `Target architecture`: `model training -> model serving API`
+- `Target architecture`: `model serving API -> matching / ETA / surge consumers`
+- `Target architecture`: `admin/debug/model management -> model platform`
 
 ### Attack Surface
 
-- HTTP profile read/write.
-- HTTP location update.
-- Online/offline state mutation.
-- Potential broker event producer.
-- PII vehicle/license fields trong model.
-- Gateway-exposed edge path cho driver endpoints: TLS, WAF, rate limit, abnormal request blocking, abuse protection.
-- Scope/permission misuse trên profile, status, approval, KYC, location.
-- Logging/audit pipeline cho location abuse, status abuse, approval/KYC change.
+- Feature ingestion path expected.
+- Dataset storage and training path expected.
+- Model serving API expected.
+- Debug/admin/model lifecycle operations expected.
+- Inference request/response and monitoring expected.
+- Client/Edge và Gateway path cho serving/admin/debug nếu expose.
+- Service-to-service inference calls giữa matching / ETA / pricing và model serving.
+- Dataset export, feature read, model publish / rollback path.
 
 ### Files/Paths To Review First
 
-- `services/driver-service/src/routes/index.js`
-- `services/driver-service/src/controllers/driverController.js`
-- `services/driver-service/src/models/Driver.js`
-- `services/driver-service/src/utils/index.js`
-- `services/driver-service/src/index.js`
-- `platform/architecture/service-manifests.js`
-- `platform/architecture/realtime-topology.js`
-- `platform/architecture/event-contracts.js`
+- `platform/architecture/ai-topology.js`
+- `platform/ml/feature-store-topology.json`
+- `platform/node/ai-layer.js`
 - `platform/architecture/security-topology.js`
+- `platform/architecture/ai-machine-learning-architecture.mmd`
+- `platform/architecture/security-zero-trust-architecture.mmd`
+- `platform/architecture/service-manifests.js`
+- `platform/architecture/topology.js`
+- `platform/architecture/system-requirements.js`
 - `gateway/api-gateway/src/security/jwt-service.js`
-- `gateway/api-gateway/src/security/abac.js`
 - `gateway/api-gateway/src/middleware/rate-limit.js`
-- `gateway/api-gateway/src/realtime/hub.js`
+- `gateway/api-gateway/src/middleware/validation.js`
 - `gateway/api-gateway/docs/02-architecture.md`
 - `gateway/api-gateway/docs/05-security-zero-trust.md`
 - `gateway/api-gateway/docs/11-observability-tracing.md`
-- `message-broker/kafka/topology.json`
 - `infra/docker-swarm/docker-stack.yml`
+- `services/ride-service/src/services/eta.service.js`
+- `services/pricing-service/src/controllers/pricingController.js`
 
 ### Step-by-step Review Workflow
 
-1. Review client / edge security cho driver endpoints qua gateway.
-   - Đọc: `platform/architecture/security-topology.js`, `gateway/api-gateway/docs/02-architecture.md`, `gateway/api-gateway/docs/05-security-zero-trust.md`, `gateway/api-gateway/src/middleware/rate-limit.js`, `gateway/api-gateway/src/route-registry.js`
+1. Review data source trust boundary.
+   - Đọc: `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`
+   - Kiểm tra: GPS/trip history/ratings có access control và minimization policy không.
+   - `Expected by architecture`: feature store ingest `GPS / Location Data`, `Trip History`, `Ratings & Feedback` theo `platform/ml/feature-store-topology.json`.
+   - `Missing evidence`: access control path, minimization policy, retention policy, dataset lineage runtime.
+   - FAIL evidence: topology có data source nhưng không có policy/capability evidence.
+2. Review observed runtime vs target architecture.
+   - Đọc: `platform/architecture/ai-topology.js`, `platform/node/ai-layer.js`
+   - Kiểm tra: ML platform có runtime boundary riêng hay mới dừng ở metadata/topology.
+   - `Observed runtime`: hiện mới có architecture metadata và AI layer header exposure.
+   - `Target architecture`: feature store, training, serving, model lifecycle operations là service/platform boundary riêng.
+   - `Observed runtime differs from architecture`: chưa có runtime service để áp authz, service identity, lifecycle control.
+3. Review Client / Edge / Gateway security cho model serving / admin / debug path.
+   - Đọc: `platform/architecture/security-topology.js`, `gateway/api-gateway/src/security/jwt-service.js`, `gateway/api-gateway/src/middleware/rate-limit.js`, `gateway/api-gateway/src/middleware/validation.js`, `gateway/api-gateway/src/route-registry.js`
    - Kiểm tra:
      - `HTTPS/TLS 1.3`
      - WAF
-     - rate limiting theo `IP/user/device`
-     - abuse protection cho endpoint driver-service qua gateway
-   - `Implemented`: chỉ khi có code/config/runtime artifact chứng minh control đang bật.
-   - `Expected by architecture`: `HTTPS/TLS 1.3`, WAF, rate limiting theo `IP/user/device`, abnormal request blocking có trong `platform/architecture/security-topology.js`.
-   - `Missing evidence`: repo hiện chưa có artifact runtime rõ cho TLS 1.3, WAF, device-based rate limiting, abuse protection riêng cho driver-service routes.
-2. Review ownership + scope + permission + RBAC/ABAC.
-   - Đọc: `services/driver-service/src/routes/index.js`, `services/driver-service/src/controllers/driverController.js`, `gateway/api-gateway/src/security/jwt-service.js`, `gateway/api-gateway/src/middleware/authorization.js`, `gateway/api-gateway/src/security/abac.js`
+     - rate limiting / quota
+     - request validation
+     - authn/authz qua gateway nếu serving API được expose
+   - `Expected by architecture`: TLS 1.3, WAF, rate limiting/quota, validation, scope/role/permission checks có trong `security-topology.js`.
+   - `Missing evidence`: chưa thấy serving/admin/debug route runtime qua gateway; chưa có quota hoặc policy riêng cho model serving path.
+   - `Observed runtime differs from architecture`: chưa có gateway-exposed serving API thật để áp edge controls.
+4. Review scope / role / permission chi tiết.
+   - Đọc: `platform/architecture/security-topology.js`, `gateway/api-gateway/src/security/jwt-service.js`, `platform/architecture/ai-topology.js`
    - Kiểm tra:
-     - ownership map giữa actor và `driverId`
-     - `scope` và `permission` riêng, không chỉ role
-     - ABAC theo ride state / location / account context
-   - `Implemented`: gateway có parse `scopes` và `permissions` trong `jwt-service.js`; ABAC GPS có rule `Driver can update GPS only when ride status is ACTIVE` ở `gateway/api-gateway/src/security/abac.js`.
-   - `Missing evidence`: `driver-service` runtime chưa thấy enforce ownership, scope, permission ở service/domain layer; chưa thấy route-level permission map riêng cho driver endpoints.
-   - FAIL evidence: ai biết `driverId` cũng GET/PATCH/POST được hoặc chỉ check auth mà không check scope/permission/resource.
-3. Review field-level authorization và sensitive mutation.
-   - Đọc: `services/driver-service/src/utils/index.js`, `services/driver-service/src/models/Driver.js`
-   - Kiểm tra: field như `status`, `availability`, vehicle info, phone, location có bị mass assignment không; approval/KYC/license path có guard riêng không.
-   - `Implemented`: validation chỉ allow một tập field trong `validateDriverPayload`.
-   - `Missing evidence`: chưa có tách biệt admin-only field, chưa có permission boundary cho approval/KYC/license mutation.
-   - FAIL evidence: payload có thể đổi trạng thái nhạy cảm hoặc info nhạy cảm mà không guard.
-4. Review KYC / approval / audit / alert expectations.
-   - Đọc: `services/driver-service/*`, `platform/architecture/security-topology.js`, `gateway/api-gateway/docs/11-observability-tracing.md`
+     - inference API
+     - dataset access
+     - feature store access
+     - model training / publish / rollback
+     - admin/debug/model management operations
+   - `Implemented`: gateway JWT service có parse `scopes`, `permissions`, `role`.
+   - `Expected by architecture`: gateway authz model có `scope`, `role`, `permission`.
+   - `Missing evidence`: matrix authz chi tiết cho inference/dataset/feature store/training/publish/rollback/admin-debug chưa có runtime policy artifact.
+5. Review model serving auth và service-to-service trust ở inference path.
+   - Đọc: `platform/node/ai-layer.js`, `platform/architecture/security-topology.js`, `platform/architecture/ai-topology.js`
    - Kiểm tra:
-     - approval/KYC change có workflow owner rõ không
-     - centralized logging
-     - correlation fields
-     - SIEM
-     - alerting cho `location abuse`, `status abuse`, `approval/KYC change`
-   - `Expected by architecture`: centralized logging (`ELK/OpenSearch`), SIEM, real-time alerts có trong `platform/architecture/security-topology.js`.
-   - `Implemented`: response meta của `driver-service` có `requestId`, `correlationId`, `timestamp` trong `services/driver-service/src/utils/index.js`.
-   - `Missing evidence`: chưa thấy audit trail bền vững, centralized logging pipeline, SIEM integration, alert rule, hay log event riêng cho approval/KYC/status/location abuse.
-5. Review location abuse và realtime/WebSocket GPS path.
-   - Đọc: `services/driver-service/src/controllers/driverController.js`, `services/driver-service/src/routes/index.js`, `platform/architecture/realtime-topology.js`, `gateway/api-gateway/src/realtime/hub.js`, `gateway/api-gateway/src/security/abac.js`
-   - Kiểm tra:
-     - runtime có dùng WebSocket GPS path hay chỉ HTTP `PATCH /:driverId/location`
-     - nếu có WebSocket thì có auth handshake, rate limit, schema validation, ABAC
-     - nếu chỉ có HTTP thì phải ghi rõ khoảng lệch với kiến trúc chuẩn `WebSocket + Redis + Kafka`
-   - `Implemented`: gateway realtime hub có handshake auth, WS rate limit, schema validation, ABAC cho `driver.location.update`.
-   - `Observed runtime differs from architecture`: `driver-service` runtime hiện chỉ thấy HTTP location update; chưa thấy service này xử lý WebSocket GPS, Redis Geo, Kafka publish như topology chuẩn.
-   - `Missing evidence`: chưa thấy driver-service consume WS stream hoặc bridge HTTP update sang Redis/Kafka path.
-6. Review event expectation và event integrity.
-   - Đọc: `message-broker/kafka/topology.json`, `platform/architecture/event-contracts.js`, `platform/architecture/realtime-topology.js`, `services/driver-service/*`
-   - Kiểm tra:
-     - producer của `driver.assigned` và `driver.location.updated` trong kiến trúc
-     - runtime có producer thật hay không
-     - event envelope/correlation/schema/replay safety
-   - `Expected by architecture`: `driver.assigned` và `driver.location.updated` có producer là `driver-service` trong `message-broker/kafka/topology.json` và `platform/architecture/event-contracts.js`.
-   - `Observed runtime differs from architecture`: chưa thấy Kafka producer hoặc publish path tương ứng trong `services/driver-service` runtime.
-   - `Missing evidence`: chưa thấy event envelope, correlation/idempotency metadata, replay guard, schema validation ở producer runtime.
+     - inference API có authn/authz không
+     - mTLS
+     - service identity
+     - authorization giữa matching / ETA / pricing và model serving API
+   - `Expected by architecture`: `mTLS`, `service identity`, authenticated/authorized gateway pattern có trong `security-topology.js`; serving inference flow có trong `ai-topology.js`.
+   - `Missing evidence`: chưa có runtime mTLS, service identity, or service-to-service authorization policy cho inference path.
+   - `Observed runtime differs from architecture`: chưa có model serving API runtime để chứng minh inference trust boundary.
+6. Review poisoning và data integrity.
+   - Đọc: `platform/architecture/ai-topology.js`, upstream feature-producing services
+   - Kiểm tra: forged GPS, corrupted trip history, spam review/rating có thể poison feature không.
+   - `Expected by architecture`: feature ingestion / training / serving chain tồn tại trong topology AI/ML.
+   - `Missing evidence`: feature provenance, schema validation, quarantine path, anomaly detection, poisoning guard runtime.
+   - FAIL evidence: feature ingestion assumed trusted.
 7. Review data security / privacy.
-   - Đọc: `services/driver-service/src/models/Driver.js`, `services/driver-service/src/controllers/driverController.js`, `platform/architecture/security-topology.js`, `infra/docker-swarm/docker-stack.yml`
+   - Đọc: `platform/architecture/security-topology.js`, `platform/ml/feature-store-topology.json`, `platform/architecture/ai-topology.js`
    - Kiểm tra:
      - encryption at-rest
      - encryption in-transit
-     - masking dữ liệu nhạy cảm như `phone`, `license`, `KYC`, `location`
-   - `Expected by architecture`: encryption `at-rest` và `in-transit`, masking có trong `platform/architecture/security-topology.js`.
-   - `Missing evidence`: chưa thấy field-level encryption/masking trong model/controller; chưa thấy masking response/log; infra hiện chưa chứng minh internal transport encrypted end-to-end.
-   - `Observed runtime differs from architecture`: Kafka đang `PLAINTEXT` trong `infra/docker-swarm/docker-stack.yml`, nên internal event transport chưa khớp yêu cầu encrypted internal traffic.
+     - masking/minimization cho `GPS/location features`, `trip history`, `ratings`, `derived features`, `model artifacts`
+     - retention/access policy cho dataset và feature data
+   - `Expected by architecture`: encryption `at-rest`, `in-transit`, masking có trong `security-topology.js`.
+   - `Missing evidence`: runtime encryption config, dataset retention policy, feature access policy, artifact masking/minimization chưa thấy trong repo.
+8. Review secret handling và debug exposure.
+   - Đọc: `platform/node/ai-layer.js`, `platform/architecture/security-topology.js`
+   - Kiểm tra: model registry credential, external provider/API secret, debug endpoint restriction.
+   - `Missing evidence`: secret manager / key rotation / registry credential handling / admin-debug restriction chưa có runtime artifact rõ.
+   - FAIL evidence: không có secret/debug control evidence.
+9. Review logging / audit / SIEM / alerting.
+   - Đọc: `platform/architecture/security-topology.js`, `gateway/api-gateway/docs/11-observability-tracing.md`, `platform/architecture/ai-topology.js`
+   - Kiểm tra:
+     - dataset access
+     - model publish / rollback
+     - permission change
+     - suspicious inference usage
+     - poisoned data path / feature anomaly
+   - `Expected by architecture`: audit/logging/SIEM/real-time alerting có trong `security-topology.js`.
+   - `Missing evidence`: audit implementation cho dataset access, model publish/rollback, permission change, suspicious inference, poisoned feature path.
+10. Review failure-mode security cho AI/ML.
+   - Đọc: `platform/architecture/ai-topology.js`, `platform/architecture/security-topology.js`, `platform/node/ai-layer.js`, `infra/docker-swarm/docker-stack.yml`
+   - Kiểm tra:
+     - serving down / timeout / retry
+     - fallback path không bypass auth
+     - rollback không mở abuse path
+     - graceful degradation đúng với kiến trúc
+   - `Expected by architecture`: resilience/fallback là phần của target serving architecture.
+   - `Missing evidence`: timeout/retry/fallback/rollback security policy cho serving runtime chưa có artifact.
+   - `Observed runtime differs from architecture`: chưa có serving runtime nên chưa chứng minh graceful degradation hay rollback security.
 
 ### PASS/FAIL Checklist
 
-- Driver chỉ đọc/sửa profile của chính mình hoặc admin path rõ.
-- `PATCH /:driverId/location` không phải open update endpoint.
-- Driver endpoint qua gateway có evidence cho TLS/WAF/rate limiting/abuse protection; nếu không có thì ghi đúng `Expected by architecture` hoặc `Missing evidence`.
-- Review phải có `scope` và `permission` riêng, không chỉ RBAC/ABAC/ownership.
-- Không có mass assignment cho status/availability/license data.
-- Online/offline transition có authz rõ.
-- KYC/approval state không bị thay bởi actor không đúng vai trò.
-- Correlation fields phải hiện diện và nhất quán qua request/response/log artifact.
-- Có evidence centralized logging, SIEM, alerting cho `location abuse`, `status abuse`, `approval/KYC change`; nếu chưa có thì không PASS.
-- Có review rõ cho encryption at-rest, encryption in-transit, masking `phone/license/KYC/location`.
-- PII không lộ tràn qua response/log mặc định.
-- Admin action hoặc approval change có audit evidence.
-- Realtime GPS path phải được đánh dấu rõ:
-  - `Implemented` nếu có WS + Redis + Kafka evidence
-  - `Observed runtime differs from architecture` nếu runtime chỉ có HTTP location update
-- Event expectation phải bám đúng kiến trúc:
-  - `Expected by architecture`: `driver.location.updated` producer là `driver-service`
-  - `Observed runtime differs from architecture`: runtime service chưa publish event này
-- Bất kỳ control nào không có evidence thì không PASS.
+- Runtime vs architecture phải tách rõ:
+  - `Observed runtime`
+  - `Target architecture`
+  - `Observed runtime differs from architecture`
+- Model serving/admin/debug path qua gateway, nếu có expose, phải review `HTTPS/TLS 1.3`, WAF, rate limiting / quota, request validation, authn/authz.
+- Inference API phải có `scope/role/permission` rõ.
+- Dataset access không bị assume trusted vì nội bộ.
+- Dataset access phải có `scope/role/permission` rõ.
+- Feature store access phải có `scope/role/permission` rõ.
+- Model training / publish / rollback phải có `scope/role/permission` rõ.
+- Admin/debug/model management operations phải có `scope/role/permission` rõ.
+- Feature ingestion có schema/provenance control.
+- GPS/trip/review signals không đi thẳng vào training/inference mà không validation.
+- Có checklist riêng cho encryption at-rest, encryption in-transit, masking/minimization `GPS/location features`, `trip history`, `ratings`, `derived features`, `model artifacts`.
+- Có retention/access policy cho dataset và feature data.
+- Service-to-service inference path phải review `mTLS`, `service identity`, authorization giữa matching / ETA / pricing và model serving API.
+- Secret handling cho model platform có evidence.
+- Debug/admin/model management path không public.
+- Model lifecycle có audit requirement rõ.
+- Logging/audit/SIEM/alerting phải cover dataset access, model publish/rollback, permission change, suspicious inference, poisoned data path / feature anomaly.
+- Failure-mode security phải cover serving down / timeout / retry, fallback auth, rollback abuse path, graceful degradation.
+- Những gì mới ở topology phải đánh dấu `Expected by architecture`, `Missing evidence`, hoặc `Observed runtime differs from architecture`; không được đánh dấu PASS.
 
 ### Findings Template
 
@@ -382,91 +416,99 @@ Phạm vi tài liệu này là tạo một bộ workflow thực chiến để t�
 
 ### Evidence Still Needed
 
-- Evidence auth context mapping từ gateway sang driver-service.
-- Evidence route-level scope/permission enforcement riêng cho driver endpoints.
-- Evidence TLS 1.3/WAF/device-based rate limiting và abuse protection runtime cho driver-service path.
-- Evidence KYC/upload flow, approval owner, audit admin action, centralized logging, SIEM, alerting.
-- Evidence Kafka producer thật cho assignment/location events.
-- Evidence realtime/WebSocket GPS path trong driver-service hoặc bridge runtime sang Redis/Kafka.
-- Evidence field masking/encryption cho `phone`, `license`, `KYC`, `location`.
+- Runtime service/code cho model serving API.
+- Runtime service/code cho feature store.
+- Runtime service/code cho training / publish / rollback control plane.
+- Dataset access control và audit implementation.
+- Feature store access control implementation.
+- Scope/role/permission matrix cho inference, dataset, feature store, training, publish, rollback, admin/debug.
+- Secret manager / key rotation / registry credential handling.
+- mTLS / service identity / service-to-service authorization cho inference path.
+- Encryption at-rest / in-transit evidence cho dataset, feature, model artifact flows.
+- Retention/access policy cho dataset và feature data.
+- Logging/SIEM/alerting implementation cho suspicious inference và poisoned data path.
+- Failure-mode security policy cho timeout/retry/fallback/rollback.
 
 ### Fix Priority
 
-- P0: privilege escalation, driver profile IDOR, status abuse, location abuse, missing scope/permission enforcement, open sensitive mutation path.
-- P1: thiếu audit/logging/SIEM/alerting, thiếu ABAC theo ride/KYC state, PII exposure, runtime lệch kiến trúc realtime/event.
-- P2: event/docs consistency, observability completeness, resilience details.
+- P0: unauth model serving, feature/data leak, poisoned training path, debug endpoint exposure, missing scope/permission boundary cho model operations.
+- P1: thiếu audit lifecycle, thiếu minimization, thiếu service identity/mTLS cho inference path, thiếu failure-mode security cho serving/fallback/rollback.
+- P2: topology-to-runtime mapping, observability planning, dataset retention and access governance detail.
 
 ### Quick Start for Developer
 
 1. Copy AI prompt bên dưới.
 2. Paste vào Codex.
 3. Scan các file:
-   - `services/driver-service/src/controllers/driverController.js`
-   - `services/driver-service/src/models/Driver.js`
-   - `services/driver-service/src/utils/index.js`
-   - `gateway/api-gateway/src/security/abac.js`
+   - `platform/architecture/ai-topology.js`
+   - `platform/ml/feature-store-topology.json`
+   - `platform/node/ai-layer.js`
+   - `platform/architecture/security-topology.js`
+   - `platform/architecture/ai-machine-learning-architecture.mmd`
+   - `platform/architecture/security-zero-trust-architecture.mmd`
+   - `platform/architecture/system-requirements.js`
    - `gateway/api-gateway/src/security/jwt-service.js`
    - `gateway/api-gateway/src/middleware/rate-limit.js`
-   - `gateway/api-gateway/src/realtime/hub.js`
-   - `platform/architecture/security-topology.js`
-   - `platform/architecture/realtime-topology.js`
-   - `platform/architecture/event-contracts.js`
-   - `message-broker/kafka/topology.json`
+   - `gateway/api-gateway/src/middleware/validation.js`
+   - `gateway/api-gateway/docs/05-security-zero-trust.md`
+   - `gateway/api-gateway/docs/11-observability-tracing.md`
    - `infra/docker-swarm/docker-stack.yml`
 4. So sánh với checklist.
-5. Với mỗi control, đánh dấu một trong bốn trạng thái:
+5. Với mỗi control, đánh dấu đúng một trạng thái:
    - `Implemented`
    - `Expected by architecture`
    - `Missing evidence`
    - `Observed runtime differs from architecture`
-6. Không viết như thể runtime đã có TLS/WAF/SIEM/Kafka/WebSocket GPS nếu repo chưa chứng minh.
+6. Không mô tả serving/training/feature-store/admin-debug runtime như thể đã có nếu repo chưa chứng minh.
 7. Ghi findings theo template.
 
 ### AI Review Prompt
 
 ```text
-Bạn là security reviewer cho driver-service của CAB-BOOKING.
+Bạn là security reviewer cho matching-service của CAB-BOOKING.
 
 Ưu tiên đọc:
-- services/driver-service/src/routes/index.js
-- services/driver-service/src/controllers/driverController.js
-- services/driver-service/src/models/Driver.js
-- services/driver-service/src/utils/index.js
-- platform/architecture/realtime-topology.js
-- platform/architecture/event-contracts.js
+- platform/architecture/ai-topology.js
+- platform/ml/feature-store-topology.json
+- platform/node/ai-layer.js
 - platform/architecture/security-topology.js
-- gateway/api-gateway/src/security/abac.js
+- platform/architecture/ai-machine-learning-architecture.mmd
+- platform/architecture/security-zero-trust-architecture.mmd
+- platform/architecture/system-requirements.js
+- platform/architecture/topology.js
 - gateway/api-gateway/src/security/jwt-service.js
 - gateway/api-gateway/src/middleware/rate-limit.js
-- gateway/api-gateway/src/realtime/hub.js
-- message-broker/kafka/topology.json
+- gateway/api-gateway/src/middleware/validation.js
+- gateway/api-gateway/docs/05-security-zero-trust.md
+- gateway/api-gateway/docs/11-observability-tracing.md
 - infra/docker-swarm/docker-stack.yml
+- services/ride-service/src/services/eta.service.js
+- services/pricing-service/src/controllers/pricingController.js
 
 Tập trung bắt:
-- privilege escalation
-- driver/profile IDOR
-- driver status abuse
-- unsafe location update
-- missing scope/permission enforcement
-- client/edge security gap cho driver endpoints
-- PII/KYC leak
-- thiếu audit/logging/SIEM/alerting cho admin action, KYC/approval, location abuse, status abuse
-- thiếu ABAC theo ride/KYC/account state
-- data security/privacy gap: encryption at-rest, encryption in-transit, masking
-- runtime lệch kiến trúc realtime `WebSocket + Redis + Kafka`
-- event expectation lệch kiến trúc hoặc bị diễn đạt sai
+- model serving không auth
+- data/feature leak
+- poisoned data path
+- secret leak
+- debug endpoint exposure
+- thiếu audit model lifecycle
+- feature provenance không rõ
+- thiếu client/edge/gateway security cho serving/admin/debug path
+- thiếu scope/role/permission cho inference, dataset, feature store, training, publish, rollback, admin/debug
+- thiếu data security/privacy cho dataset, feature, model artifact
+- thiếu mTLS/service identity/service authz ở inference path
+- thiếu logging/SIEM/alerting cho suspicious inference và poisoned data path
+- thiếu failure-mode security cho serving/fallback/rollback
 
 Rules:
-- Không assume gateway đã enforce đủ ownership.
-- Không assume RBAC là đủ nếu chưa thấy scope/permission.
-- Nếu KYC/upload/audit path không thấy trong repo, ghi rõ là missing evidence.
-- Nếu runtime hiện tại khác kiến trúc chuẩn, phải ghi `Observed runtime differs from architecture`.
-- Không được gán sai producer của `driver.location.updated`; kiến trúc hiện tại ghi producer là `driver-service`, nhưng nếu runtime không publish thì phải nói thẳng runtime đang lệch kiến trúc.
-- Với mỗi control, phải gắn đúng một trạng thái:
-  - `Implemented`
-  - `Expected by architecture`
-  - `Missing evidence`
+- Đây là expected architecture workflow; phải tách rõ:
+  - `Observed runtime`
+  - `Target architecture`
   - `Observed runtime differs from architecture`
+- Nếu repo chưa có runtime service thì ghi `Missing evidence` rõ ràng.
+- Không assume AI/ML internal path là trusted.
+- Chỉ PASS khi có evidence trong code/config/runtime artifact.
+- Nếu chỉ có topology/doc thì ghi `Expected by architecture`.
 
 Đầu ra:
 - Findings chuẩn

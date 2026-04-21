@@ -69,6 +69,16 @@ export const serviceManifests = {
     publishes: ["DriverAssigned", "DriverLocationUpdated"],
     consumes: []
   },
+  "matching-service": {
+    key: "matching-service",
+    displayName: "Matching Service",
+    port: 8000,
+    gatewayPath: "/api/v1/matching",
+    protocols: ["REST", "Kafka"],
+    dataStores: ["mongodb", "redis"],
+    publishes: ["DriverAssigned"],
+    consumes: []
+  },
   "notification-service": {
     key: "notification-service",
     displayName: "Notification Service",

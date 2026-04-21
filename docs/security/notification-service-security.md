@@ -11,10 +11,11 @@ Phạm vi tài liệu này là tạo một bộ workflow thực chiến để t�
 - CAB-BOOKING là kiến trúc `microservices + event-driven + real-time + AI-enabled + Zero Trust`.
 - Frontend hiện diện dưới `apps/admin-dashboard`, `apps/customer-app`, `apps/driver-app`.
 - Entry point phía backend là `gateway/api-gateway`.
-- Repo hiện có 9 domain service thật dưới `services/`:
+- Repo hiện có 10 domain service thật dưới `services/`:
   - `auth-service`
   - `booking-service`
   - `driver-service`
+  - `matching-service`
   - `notification-service`
   - `payment-service`
   - `pricing-service`
@@ -53,7 +54,7 @@ Phạm vi tài liệu này là tạo một bộ workflow thực chiến để t�
 | `ride-service` | Observed | `services/ride-service/*` | Có lifecycle + WebSocket + ETA module nội bộ |
 | `user-service` | Observed | `services/user-service/*` | Có user/profile/preferences/payment refs trên Postgres |
 | `eta-service` | Expected architecture workflow | `services/ride-service/src/services/eta.service.js`, `platform/architecture/ai-topology.js`, `data-layer/redis/geo-topology.json` | Chưa tách service riêng |
-| `ml-platform-service` | Expected architecture workflow | `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`, `platform/node/ai-layer.js` | Chưa có service runtime riêng |
+| `matching-service` | Observed | `services/matching-service/*`, `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`, `platform/node/ai-layer.js` | Có runtime FastAPI cho AI matching, feature store, training và background model serving |
 | `api-gateway` | Observed, shared control plane | `gateway/api-gateway/*` | Không tạo workflow riêng; dùng như evidence xuyên suốt |
 
 ### 1.4 Trust boundaries tổng thể
