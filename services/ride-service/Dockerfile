@@ -4,9 +4,11 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY services/ride-service/package.json services/ride-service/package.json
+COPY AI/ML/eta-service/package.json AI/ML/eta-service/package.json
 COPY services/ride-service services/ride-service
+COPY AI AI
 
-RUN npm ci --workspace @cab/ride-service --include-workspace-root
+RUN npm ci --workspace @cab/ride-service --workspace @cab/eta-ai-service --include-workspace-root
 
 WORKDIR /app/services/ride-service
 

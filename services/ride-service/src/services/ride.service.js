@@ -179,9 +179,9 @@ async function updateRideLocation(rideId, driverId, location) {
       ride.status === RIDE_STATUS.DRIVER_ASSIGNED ||
       ride.status === RIDE_STATUS.DRIVER_ARRIVING
     ) {
-      ride.etaMinutes = calculateETA(location, ride.pickup);
+      ride.etaMinutes = await calculateETA(location, ride.pickup);
     } else if (ride.status === RIDE_STATUS.IN_PROGRESS) {
-      ride.etaMinutes = calculateETA(location, ride.destination);
+      ride.etaMinutes = await calculateETA(location, ride.destination);
     }
 
     await ride.save();
@@ -200,9 +200,9 @@ async function updateRideLocation(rideId, driverId, location) {
     ride.status === RIDE_STATUS.DRIVER_ASSIGNED ||
     ride.status === RIDE_STATUS.DRIVER_ARRIVING
   ) {
-    ride.etaMinutes = calculateETA(location, ride.pickup);
+    ride.etaMinutes = await calculateETA(location, ride.pickup);
   } else if (ride.status === RIDE_STATUS.IN_PROGRESS) {
-    ride.etaMinutes = calculateETA(location, ride.destination);
+    ride.etaMinutes = await calculateETA(location, ride.destination);
   }
 
   updateDriverLocation(driverId, location);
@@ -235,7 +235,7 @@ async function startRide(rideId, driverId) {
     ride.startedAt = new Date();
     ride.updatedAt = new Date();
     if (ride.currentLocation) {
-      ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
+      ride.etaMinutes = await calculateETA(ride.currentLocation, ride.destination);
     }
     await ride.save();
     return ride;
@@ -245,7 +245,7 @@ async function startRide(rideId, driverId) {
   ride.startedAt = new Date().toISOString();
   ride.updatedAt = new Date().toISOString();
   if (ride.currentLocation) {
-    ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
+    ride.etaMinutes = await calculateETA(ride.currentLocation, ride.destination);
   }
   await saveRide(ride);
   return ride;

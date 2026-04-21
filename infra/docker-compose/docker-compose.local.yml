@@ -201,19 +201,33 @@ services:
     container_name: cab-ride-service
     env_file:
       - ../../services/ride-service/.env.docker
-    expose:
-      - "3109"
+    ports:
+      - "3109:3109"
     depends_on:
       ride-mongodb:
         condition: service_started
       ride-redis:
+        condition: service_started
+      eta-redis:
         condition: service_started
       kafka:
         condition: service_started
     networks:
       - cab-services
       - ride-data
+      - eta-data
       - cab-broker
+
+  # ── ETA AI Redis (hot-store for ETA cache & driver locations) ──────────────
+  eta-redis:
+    image: redis:7-alpine
+    container_name: cab-eta-redis
+    expose:
+      - "6379"
+    volumes:
+      - cab_eta_redis_data:/data
+    networks:
+      - eta-data
 
   payment-mongodb:
     image: mongo:7
@@ -373,7 +387,8 @@ services:
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic ride.status.changed --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.failed --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.success --partitions 1 --replication-factor 1 &&
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.completed --partitions 1 --replication-factor 1
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.completed --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic eta.result --partitions 1 --replication-factor 1
       "
     networks:
       - cab-broker
@@ -389,6 +404,7 @@ volumes:
   cab_notification_mongodb_data:
   cab_ride_mongodb_data:
   cab_ride_redis_data:
+  cab_eta_redis_data:
   cab_kafka_data:
 
 networks:
@@ -403,3 +419,4 @@ networks:
   driver-data:
   notification-data:
   ride-data:
+  eta-data:

@@ -5,7 +5,8 @@
   "workspaces": [
     "apps/*",
     "gateway/*",
-    "services/*"
+    "services/*",
+    "AI/ML/*"
   ],
   "scripts": {
     "dev:admin": "npm run dev --workspace @cab/admin-dashboard",
