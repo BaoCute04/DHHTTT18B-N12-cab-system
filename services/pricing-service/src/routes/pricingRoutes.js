@@ -1,6 +1,6 @@
 import express from 'express';
 import Joi from 'joi';
-import { getQuote, getSurge } from '../controllers/pricingController.js';
+import { getQuote } from '../controllers/pricingController.js';
 
 const router = express.Router();
 
@@ -29,6 +29,5 @@ const validateQuote = (req, res, next) => {
 };
 
 router.post('/quote', validateQuote, getQuote);
-router.get('/surge', getSurge);
 
 export default router;

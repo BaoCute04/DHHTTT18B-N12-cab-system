@@ -1,44 +1,27 @@
+from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
-class FeatureIngestRequest(BaseModel):
-    source: str = Field(
-        ...,
-        description="Nguồn dữ liệu: 'gps' | 'trip_history' | 'ratings'",
-        examples=["trip_history"],
-    )
-    zoneId: str = Field(..., description="Khu vực địa lý (VD: zone_quan1)", examples=["zone_quan1"])
-    features: dict = Field(
-        ...,
-        description="Feature vector dạng key-value",
-        examples=[{
-            "hour_of_day": 17,
-            "day_of_week": 4,
-            "demand_count": 42,
-            "supply_count": 15,
-            "avg_speed_kmh": 8.5,
-            "rain_indicator": 0,
-        }],
-    )
-    label: Optional[float] = Field(
-        None,
-        description="Surge multiplier thực tế (ground truth) nếu có, dùng cho training",
-        examples=[1.8],
-    )
+class DriverFeatureSnapshotPayload(BaseModel):
+    driver_rating: Optional[float] = Field(default=None, ge=0.0, le=5.0)
+    driver_completed_trips: Optional[int] = Field(default=None, ge=0)
+    driver_acceptance_rate: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    historical_matching_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eta_seconds: Optional[int] = Field(default=None, ge=0)
+    surge_multiplier: Optional[float] = Field(default=None, ge=0.0)
+    driver_busy_time: Optional[float] = Field(default=None, ge=0.0)
 
 
-class FeatureIngestResponse(BaseModel):
-    sampleId: str
-    zoneId: str
+class UpsertDriverFeatureRequest(BaseModel):
+    driver_id: str = Field(..., description="Driver identifier")
+    features: DriverFeatureSnapshotPayload
+    source: str = Field(default="matching-feature-store", description="Producer/source of the feature snapshot")
+
+
+class DriverFeatureResponse(BaseModel):
+    driver_id: str
+    features: DriverFeatureSnapshotPayload
     source: str
-    capturedAt: str
-    message: str
-
-
-class ZoneMetricUpsertRequest(BaseModel):
-    zoneId: str
-    demand_count: int = Field(..., ge=0)
-    supply_count: int = Field(..., ge=0)
-    avg_speed_kmh: float = Field(30.0, ge=0)
-    rain_indicator: int = Field(0, ge=0, le=1)
+    updated_at: datetime

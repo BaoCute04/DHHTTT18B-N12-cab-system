@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -6,33 +5,37 @@ from pydantic import BaseModel, Field
 
 class CandidateFeature(BaseModel):
     driver_id: str = Field(..., description="Driver unique id")
-    distance_km: float = Field(..., ge=0.0, description="Distance from pickup location")
-    driver_rating: float = Field(..., ge=0.0, le=5.0, description="Driver rating")
-    driver_completed_trips: int = Field(
-        0,
+    distance_km: Optional[float] = Field(
+        None,
+        ge=0.0,
+        description="Distance from pickup location. May be enriched from Redis Geo or caller payload.",
+    )
+    driver_rating: Optional[float] = Field(None, ge=0.0, le=5.0, description="Driver rating")
+    driver_completed_trips: Optional[int] = Field(
+        None,
         ge=0,
         description="Số chuyến đã hoàn thành của tài xế",
     )
-    driver_acceptance_rate: float = Field(
-        0.0,
+    driver_acceptance_rate: Optional[float] = Field(
+        None,
         ge=0.0,
         le=1.0,
         description="Tỷ lệ chấp nhận cuốc của tài xế",
     )
-    historical_matching_score: float = Field(
-        0.5,
+    historical_matching_score: Optional[float] = Field(
+        None,
         ge=0.0,
         le=1.0,
         description="Matching score lịch sử của tài xế",
     )
-    eta_seconds: int = Field(..., ge=0, description="ETA dự kiến đến pickup")
-    surge_multiplier: float = Field(
-        1.0,
+    eta_seconds: Optional[int] = Field(None, ge=0, description="ETA dự kiến đến pickup")
+    surge_multiplier: Optional[float] = Field(
+        None,
         ge=0.0,
         description="Surge multiplier hiện tại của khu vực",
     )
-    driver_busy_time: float = Field(
-        0.0,
+    driver_busy_time: Optional[float] = Field(
+        None,
         ge=0.0,
         description="Thời gian tài xế bận tính bằng phút",
     )
@@ -87,6 +90,10 @@ class BestDriverResponse(BaseModel):
     confidence_score: float
     matching_reason: str
     selected_by: str
+    decision_source: str
+    hard_constraint_source: str
+    hard_constraints_applied: List[str]
+    model_version: Optional[str] = None
     assigned_at: str
     published: bool
 

@@ -5,7 +5,7 @@ export const serviceManifests = {
     port: 3101,
     gatewayPath: "/api/v1/pricing",
     protocols: ["REST", "Kafka"],
-    dataStores: ["postgresql"],
+    dataStores: ["mongodb", "redis"],
     publishes: [],
     consumes: []
   },
@@ -78,6 +78,17 @@ export const serviceManifests = {
     dataStores: ["mongodb", "redis"],
     publishes: ["DriverAssigned"],
     consumes: []
+  },
+  "surge-pricing-service": {
+    key: "surge-pricing-service",
+    displayName: "Surge Pricing Service",
+    port: 8001,
+    gatewayPath: "/internal/surge-pricing",
+    protocols: ["REST", "Kafka"],
+    dataStores: ["mongodb", "redis"],
+    publishes: ["SurgePriceUpdated"],
+    consumes: ["DriverLocationUpdated"],
+    exposeViaGateway: false
   },
   "notification-service": {
     key: "notification-service",

@@ -68,6 +68,19 @@ def _normalize_score(raw_score: float) -> float:
     return float(round(max(0.0, min(1.0, value)), 3))
 
 
+def get_matching_model_metadata() -> dict:
+    metadata_path = os.path.join(settings.model_store_path, "matching_metadata.json")
+    if not os.path.exists(metadata_path):
+        return {}
+
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except Exception as exc:
+        logger.warning("Failed to read matching metadata: %s", exc)
+        return {}
+
+
 def predict_matching_scores(candidates: list[dict], force_fallback: bool = False) -> list[dict]:
     """
     Tính score cho từng candidate.

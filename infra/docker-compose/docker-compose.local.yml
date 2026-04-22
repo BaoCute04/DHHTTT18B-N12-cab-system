@@ -122,6 +122,30 @@ services:
       - ml-platform-data
       - cab-broker
 
+  surge-pricing-service:
+    build:
+      context: ../..
+      dockerfile: services/surge-pricing-service/Dockerfile
+    image: cab-surge-pricing-service:local
+    container_name: cab-surge-pricing-service
+    env_file:
+      - ../../services/surge-pricing-service/.env.docker
+    expose:
+      - "8001"
+    volumes:
+      - cab_surge_model_store:/app/model_store
+    depends_on:
+      ml-mongodb:
+        condition: service_started
+      ml-redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - ml-platform-data
+      - cab-broker
+
   pricing-service:
     build:
       context: ../..
@@ -138,6 +162,8 @@ services:
       kafka:
         condition: service_started
       ml-redis:
+        condition: service_started
+      surge-pricing-service:
         condition: service_started
     networks:
       - cab-services
@@ -455,6 +481,7 @@ volumes:
   cab_ml_mongodb_data:
   cab_ml_redis_data:
   cab_ml_model_store:
+  cab_surge_model_store:
 
 networks:
   cab-edge:

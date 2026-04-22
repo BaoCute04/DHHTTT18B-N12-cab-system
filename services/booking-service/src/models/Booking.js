@@ -36,6 +36,15 @@ const bookingSchema = new mongoose.Schema({
         surgeMultiplier: { type: Number, default: 1.0 }
     },
 
+    // [Tiêu chí 5] Quote locking — lưu giá đã lock từ pricing-service
+    quoteId: { type: String, default: null, index: true },
+    lockedPrice: {
+        amount: { type: Number, default: null },
+        surgeMultiplier: { type: Number, default: null },
+        surgeSource: { type: String, default: null },
+        lockedAt: { type: Date, default: null },
+    },
+
     // Trạng thái (Mặc định REQUESTED theo TC6)
     status: {
         type: String,

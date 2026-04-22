@@ -15,7 +15,9 @@ const familyRoleMap = {
 };
 
 export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 5000 } = {}) {
-  const families = Object.values(serviceManifests).map((manifest) => ({
+  const families = Object.values(serviceManifests)
+    .filter((manifest) => manifest.exposeViaGateway !== false)
+    .map((manifest) => ({
     familyKey: manifest.gatewayPath.replace("/api/v1/", ""),
     prefix: manifest.gatewayPath,
     serviceKey: manifest.key,
