@@ -9,7 +9,14 @@ export function enforceDriverLocationAbac(auth, payload) {
     throw new GatewayError(403, "FORBIDDEN", "Only drivers can publish GPS updates");
   }
 
-  if (payload.rideStatus !== "ACTIVE") {
-    throw new GatewayError(403, "FORBIDDEN", "Driver can update GPS only when ride is ACTIVE");
+  const normalizedStatus = String(payload.rideStatus || "").trim().toUpperCase();
+  const allowedStatuses = new Set(["ACTIVE", "DRIVER_ASSIGNED", "DRIVER_ARRIVING", "IN_PROGRESS"]);
+
+  if (!allowedStatuses.has(normalizedStatus)) {
+    throw new GatewayError(
+      403,
+      "FORBIDDEN",
+      "Driver can update GPS only when ride is active or in driver-arriving / in-progress states"
+    );
   }
 }

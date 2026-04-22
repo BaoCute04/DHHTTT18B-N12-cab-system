@@ -10,8 +10,20 @@ export async function createGatewayServer(options = {}) {
     jwtService: runtime.dependencies.jwtService,
     store: runtime.dependencies.store,
     logger: runtime.dependencies.logger,
-    metrics: runtime.dependencies.metrics
+    metrics: runtime.dependencies.metrics,
+    rideServiceUrl: runtime.dependencies.env.RIDE_SERVICE_URL,
+    fetchImpl: options.fetchImpl || globalThis.fetch,
+    upstreamTimeoutMs: Number(runtime.dependencies.env.UPSTREAM_TIMEOUT_MS || 5000),
+    forwardDriverLocationUpdate: options.forwardDriverLocationUpdate
   });
+
+  runtime.dependencies.realtimePublisher.publish = (userIds, event) => {
+    const targets = Array.isArray(userIds) ? userIds : [userIds];
+    return targets.reduce(
+      (deliveredCount, userId) => deliveredCount + realtimeHub.publishToUser(String(userId), event),
+      0
+    );
+  };
 
   realtimeHub.attach(server);
 

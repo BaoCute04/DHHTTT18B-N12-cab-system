@@ -97,15 +97,83 @@ test("websocket rate limits driver location updates", async (t) => {
   assert.match(limited.message, /WebSocket rate limit exceeded/);
 });
 
-async function startRuntime(t) {
+test("websocket forwards GPS updates to ride-service bridge", async (t) => {
+  const forwardedPayloads = [];
+  const runtime = await startRuntime(t, {
+    forwardDriverLocationUpdate: async (payload) => {
+      forwardedPayloads.push(payload);
+      return { skipped: false };
+    }
+  });
+  const token = await runtime.auth.signToken({
+    sub: "driver-1",
+    role: "driver",
+    roles: ["driver"]
+  });
+
+  const socket = await connectWebSocket(`${runtime.wsUrl}/realtime?token=${token}`);
+  t.after(() => socket.client.close());
+  await socket.nextMessage();
+
+  const message = buildDriverLocationUpdate();
+  socket.client.send(JSON.stringify(message));
+
+  const ack = await socket.nextMessage();
+  assert.equal(ack.type, "ack");
+  assert.equal(ack.accepted, true);
+  assert.equal(ack.forwarded, true);
+  assert.equal(forwardedPayloads.length, 1);
+  assert.deepEqual(forwardedPayloads[0], message.payload);
+});
+
+test("internal realtime publish endpoint pushes event to connected users", async (t) => {
+  const runtime = await startRuntime(t);
+  const token = await runtime.auth.signToken({
+    sub: "driver-1",
+    role: "driver",
+    roles: ["driver"]
+  });
+
+  const socket = await connectWebSocket(`${runtime.wsUrl}/realtime?token=${token}`);
+  t.after(() => socket.client.close());
+  await socket.nextMessage();
+
+  const response = await fetch(`${runtime.baseUrl}/internal/realtime/publish`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-realtime-internal-key": runtime.realtimeInternalKey
+    },
+    body: JSON.stringify({
+      userIds: ["driver-1"],
+      event: {
+        type: "driver.location.updated",
+        payload: {
+          rideId: "ride-1"
+        }
+      }
+    })
+  });
+
+  assert.equal(response.status, 202);
+
+  const pushedMessage = await socket.nextMessage();
+  assert.equal(pushedMessage.type, "driver.location.updated");
+  assert.equal(pushedMessage.payload.rideId, "ride-1");
+});
+
+async function startRuntime(t, options = {}) {
   const auth = await createAuthServer();
+  const realtimeInternalKey = "test-realtime-key";
   const runtime = await createGatewayServer({
     env: {
       AUTH_SERVICE_URL: auth.url,
       JWT_ISSUER: ISSUER,
-      JWT_AUDIENCE: AUDIENCE
+      JWT_AUDIENCE: AUDIENCE,
+      REALTIME_INTERNAL_KEY: realtimeInternalKey
     },
-    storeMode: "memory"
+    storeMode: "memory",
+    forwardDriverLocationUpdate: options.forwardDriverLocationUpdate
   });
 
   runtime.server.listen(0);
@@ -121,6 +189,8 @@ async function startRuntime(t) {
   return {
     ...runtime,
     auth,
+    baseUrl,
+    realtimeInternalKey,
     wsUrl: baseUrl.replace("http://", "ws://")
   };
 }

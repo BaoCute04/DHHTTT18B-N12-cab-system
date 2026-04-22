@@ -10,7 +10,11 @@ export function createRealtimeHub({
   jwtService,
   store,
   logger,
-  metrics
+  metrics,
+  rideServiceUrl,
+  fetchImpl = globalThis.fetch,
+  upstreamTimeoutMs = 5000,
+  forwardDriverLocationUpdate
 }) {
   const webSocketServer = new WebSocketServer({ noServer: true });
   const connectionsById = new Map();
@@ -77,12 +81,14 @@ export function createRealtimeHub({
 
           const parsed = websocketSchemas.driverLocationUpdate.parse(message);
           enforceDriverLocationAbac(auth, parsed.payload);
+          const forwardResult = await bridgeDriverLocationUpdate(parsed.payload);
           metrics.recordWsMessage(message.type, "accepted");
           socket.send(
             JSON.stringify({
               type: "ack",
               event: message.type,
-              accepted: true
+              accepted: true,
+              forwarded: !forwardResult?.skipped
             })
           );
           return;
@@ -176,4 +182,75 @@ export function createRealtimeHub({
       webSocketServer.close();
     }
   };
+
+  async function bridgeDriverLocationUpdate(payload) {
+    if (typeof forwardDriverLocationUpdate === "function") {
+      return forwardDriverLocationUpdate(payload);
+    }
+
+    if (!rideServiceUrl || typeof fetchImpl !== "function") {
+      logger.warn?.({
+        event: "ws.driver.location.skipped",
+        reason: "ride-service-unconfigured"
+      });
+      return { skipped: true };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
+
+    try {
+      const response = await fetchImpl(
+        `${String(rideServiceUrl).replace(/\/$/, "")}/api/v1/rides/${payload.rideId}/location`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            driverId: payload.driverId,
+            currentLocation: {
+              lat: payload.latitude,
+              lng: payload.longitude
+            }
+          }),
+          signal: controller.signal
+        }
+      );
+
+      if (!response.ok) {
+        const body = await safeReadResponse(response);
+        throw new GatewayError(
+          502,
+          "RIDE_LOCATION_FORWARD_FAILED",
+          `Ride service rejected driver location update (${response.status})`,
+          {
+            body
+          }
+        );
+      }
+
+      return { skipped: false };
+    } catch (error) {
+      if (error instanceof GatewayError) {
+        throw error;
+      }
+
+      throw new GatewayError(
+        502,
+        "RIDE_LOCATION_FORWARD_FAILED",
+        `Failed to forward GPS update to ride service: ${error.message}`
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+async function safeReadResponse(response) {
+  try {
+    return await response.text();
+  } catch {
+    return null;
+  }
 }

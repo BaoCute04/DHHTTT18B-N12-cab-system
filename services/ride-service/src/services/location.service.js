@@ -1,7 +1,9 @@
 /**
  * Location Service
- * Manages driver location updates and tracking.
+ * Manages driver location updates and nearby-driver lookups for ride-service.
  */
+
+'use strict';
 
 const Redis = require('ioredis');
 const { calculateETA } = require('./eta.service');
@@ -52,8 +54,8 @@ async function getRedisClient() {
       .then(() => redisClient)
       .catch((error) => {
         redisUnavailable = true;
-        console.warn(`[location.service] Redis unavailable, falling back to memory: ${error.message}`);
         redisClient = null;
+        console.warn(`[location.service] Redis unavailable, falling back to memory: ${error.message}`);
         return null;
       });
   }
@@ -61,24 +63,34 @@ async function getRedisClient() {
   return redisConnectPromise;
 }
 
-/**
- * Update driver's location
- * @param {string} driverId - Driver ID
- * @param {Object} location - Location {lat, lng, address}
- * @returns {Object} Updated location object
- */
-async function updateDriverLocation(driverId, location) {
-  if (!location || location.lat === undefined || location.lng === undefined) {
-    throw new Error('Invalid location: must include lat and lng');
+function validateLocation(location) {
+  if (!location) {
+    return { valid: false, error: 'Location is required' };
   }
-
+  if (location.lat === undefined || location.lng === undefined) {
+    return { valid: false, error: 'Location must include lat and lng' };
+  }
+  if (typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+    return { valid: false, error: 'Lat and lng must be numbers' };
+  }
   if (location.lat < -90 || location.lat > 90) {
-    throw new Error('Invalid latitude: must be between -90 and 90');
+    return { valid: false, error: 'Latitude must be between -90 and 90' };
   }
-
   if (location.lng < -180 || location.lng > 180) {
-    throw new Error('Invalid longitude: must be between -180 and 180');
+    return { valid: false, error: 'Longitude must be between -180 and 180' };
   }
+  return { valid: true };
+}
+
+function assertValidLocation(location) {
+  const validation = validateLocation(location);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+}
+
+async function updateDriverLocation(driverId, location) {
+  assertValidLocation(location);
 
   const updatedLocation = {
     driverId,
@@ -89,30 +101,22 @@ async function updateDriverLocation(driverId, location) {
   };
 
   const client = await getRedisClient();
-
   if (client) {
     await client.geoadd(GEO_KEY, updatedLocation.lng, updatedLocation.lat, driverId);
     await client.hset(META_KEY, driverId, JSON.stringify(updatedLocation));
     await appendLocationHistory(client, driverId, updatedLocation);
-  } else {
-    driverLocations.set(driverId, updatedLocation);
-    appendMemoryHistory(driverId, updatedLocation);
+    return updatedLocation;
   }
 
+  driverLocations.set(driverId, updatedLocation);
+  appendMemoryHistory(driverId, updatedLocation);
   return updatedLocation;
 }
 
-/**
- * Get driver's current location
- * @param {string} driverId - Driver ID
- * @returns {Object|null} Driver's location or null if not found
- */
 async function getDriverLocation(driverId) {
   const client = await getRedisClient();
-
   if (client) {
     const rawLocation = await client.hget(META_KEY, driverId);
-
     if (!rawLocation) {
       return null;
     }
@@ -127,14 +131,8 @@ async function getDriverLocation(driverId) {
   return driverLocations.get(driverId) || null;
 }
 
-/**
- * Check if driver has active location
- * @param {string} driverId - Driver ID
- * @returns {boolean} True if driver has location
- */
 async function hasActiveLocation(driverId) {
   const client = await getRedisClient();
-
   if (client) {
     const position = await client.geopos(GEO_KEY, driverId);
     return Boolean(position?.[0]);
@@ -143,36 +141,24 @@ async function hasActiveLocation(driverId) {
   return driverLocations.has(driverId);
 }
 
-/**
- * Clear driver location (when ride ends or driver goes offline)
- * @param {string} driverId - Driver ID
- * @returns {boolean} True if location was cleared
- */
 async function clearDriverLocation(driverId) {
   const client = await getRedisClient();
-
   if (client) {
-    const removedFromGeo = await client.zrem(GEO_KEY, driverId);
+    const removed = await client.zrem(GEO_KEY, driverId);
     await client.hdel(META_KEY, driverId);
     await client.del(`${HISTORY_KEY_PREFIX}${driverId}`);
-    return removedFromGeo > 0;
+    return removed > 0;
   }
 
   driverLocationHistory.delete(driverId);
   return driverLocations.delete(driverId);
 }
 
-/**
- * Get all active driver locations
- * @returns {Object} Map of driver locations
- */
 async function getAllActiveLocations() {
   const client = await getRedisClient();
-
   if (client) {
     const driverIds = await client.zrange(GEO_KEY, 0, -1);
     const entries = await Promise.all(driverIds.map((driverId) => getDriverLocation(driverId)));
-
     return new Map(
       entries
         .filter(Boolean)
@@ -183,20 +169,14 @@ async function getAllActiveLocations() {
   return new Map(driverLocations);
 }
 
-/**
- * Update location and calculate ETA
- * @param {string} driverId - Driver ID
- * @param {Object} location - New location
- * @param {Object} destination - Destination for ETA calculation
- * @returns {Object} Updated location with calculated ETA
- */
-async function updateLocationWithETA(driverId, location, destination) {
+async function updateLocationWithETA(driverId, location, destination, opts = {}) {
   const updatedLocation = await updateDriverLocation(driverId, location);
 
   if (destination) {
-    const eta = calculateETA(
+    const eta = await calculateETA(
       { lat: location.lat, lng: location.lng },
-      destination
+      destination,
+      opts
     );
     updatedLocation.eta = eta;
   }
@@ -204,20 +184,10 @@ async function updateLocationWithETA(driverId, location, destination) {
   return updatedLocation;
 }
 
-/**
- * Find nearby drivers using Redis Geo radius search
- * @param {Object} location - Origin location {lat, lng}
- * @param {number} radiusKm - Radius in kilometers
- * @param {number} limit - Maximum number of drivers to return
- * @returns {Array} Nearby driver records
- */
 async function findNearbyDrivers(location, radiusKm = 5, limit = 10) {
-  if (!location || location.lat === undefined || location.lng === undefined) {
-    throw new Error('Invalid location: must include lat and lng');
-  }
+  assertValidLocation(location);
 
   const client = await getRedisClient();
-
   if (client) {
     const matches = await client.georadius(
       GEO_KEY,
@@ -237,7 +207,6 @@ async function findNearbyDrivers(location, radiusKm = 5, limit = 10) {
     for (const match of matches || []) {
       const [driverId, distance, coords] = match;
       const driverLocation = await getDriverLocation(driverId);
-
       nearbyDrivers.push({
         driverId,
         distanceKm: Number(distance),
@@ -251,7 +220,7 @@ async function findNearbyDrivers(location, radiusKm = 5, limit = 10) {
     return nearbyDrivers;
   }
 
-  const radiusInKm = Number(radiusKm) || 0;
+  const radiusLimit = Number(radiusKm) || 0;
   const maxResults = Math.max(Number(limit) || 0, 0);
 
   return Array.from(driverLocations.values())
@@ -263,53 +232,15 @@ async function findNearbyDrivers(location, radiusKm = 5, limit = 10) {
       address: driverLocation.address || '',
       updatedAt: driverLocation.updatedAt || null,
     }))
-    .filter((driverLocation) => driverLocation.distanceKm <= radiusInKm)
+    .filter((driverLocation) => driverLocation.distanceKm <= radiusLimit)
     .sort((left, right) => left.distanceKm - right.distanceKm)
     .slice(0, maxResults || undefined);
 }
 
-/**
- * Validate location data
- * @param {Object} location - Location object to validate
- * @returns {Object} Validation result {valid: boolean, error?: string}
- */
-function validateLocation(location) {
-  if (!location) {
-    return { valid: false, error: 'Location is required' };
-  }
-
-  if (location.lat === undefined || location.lng === undefined) {
-    return { valid: false, error: 'Location must include lat and lng' };
-  }
-
-  if (typeof location.lat !== 'number' || typeof location.lng !== 'number') {
-    return { valid: false, error: 'Lat and lng must be numbers' };
-  }
-
-  if (location.lat < -90 || location.lat > 90) {
-    return { valid: false, error: 'Latitude must be between -90 and 90' };
-  }
-
-  if (location.lng < -180 || location.lng > 180) {
-    return { valid: false, error: 'Longitude must be between -180 and 180' };
-  }
-
-  return { valid: true };
-}
-
-/**
- * Get location update history (if stored)
- * Currently returns just current location
- * Can be extended to use database for historical data
- * @param {string} driverId - Driver ID
- * @returns {Array} Location history
- */
 async function getLocationHistory(driverId) {
   const client = await getRedisClient();
-
   if (client) {
     const rawHistory = await client.lrange(`${HISTORY_KEY_PREFIX}${driverId}`, 0, HISTORY_LIMIT - 1);
-
     return rawHistory
       .map((entry) => {
         try {

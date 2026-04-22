@@ -20,6 +20,8 @@ export async function createGatewayApp(options = {}) {
   const env = options.env || process.env;
   const logger = options.logger || createLogger();
   const metrics = options.metrics || createGatewayMetrics();
+  const realtimePublisher = options.realtimePublisher || { publish: () => 0 };
+  const realtimeInternalKey = String(env.REALTIME_INTERNAL_KEY || "cab-realtime-internal-key").trim();
   const store = options.store || createGatewayStore({ env, mode: options.storeMode });
   const routeRegistry = options.routeRegistry || createRouteRegistry({
     env,
@@ -91,6 +93,47 @@ export async function createGatewayApp(options = {}) {
     response.status(200).send(await metrics.registry.metrics());
   });
 
+  app.post("/internal/realtime/publish", (request, response) => {
+    if (!realtimeInternalKey) {
+      response.status(503).json({
+        success: false,
+        message: "Realtime internal publishing is disabled"
+      });
+      return;
+    }
+
+    const providedKey = String(request.headers["x-realtime-internal-key"] || "").trim();
+    if (providedKey !== realtimeInternalKey) {
+      response.status(403).json({
+        success: false,
+        message: "Invalid realtime internal key"
+      });
+      return;
+    }
+
+    const userIds = normalizeTargetUserIds(request.body?.userIds, request.body?.userId);
+    const event = request.body?.event;
+
+    if (userIds.length === 0 || !event || typeof event !== "object" || Array.isArray(event)) {
+      response.status(400).json({
+        success: false,
+        message: "userIds and event are required"
+      });
+      return;
+    }
+
+    const deliveredCount = realtimePublisher.publish(userIds, event);
+
+    response.status(202).json({
+      success: true,
+      message: "Realtime event accepted",
+      data: {
+        deliveredCount,
+        targetCount: userIds.length
+      }
+    });
+  });
+
   const apiPipeline = [
     createAuthMiddleware({ jwtService }),
     createAuthorizationMiddleware(),
@@ -130,10 +173,31 @@ export async function createGatewayApp(options = {}) {
       store,
       routeRegistry,
       jwtService,
-      proxyClient
+      proxyClient,
+      realtimePublisher
     },
     async close() {
       await store.disconnect();
     }
   };
+}
+
+function normalizeTargetUserIds(userIds, singleUserId) {
+  const values = [];
+
+  if (Array.isArray(userIds)) {
+    values.push(...userIds);
+  }
+
+  if (singleUserId) {
+    values.push(singleUserId);
+  }
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
 }

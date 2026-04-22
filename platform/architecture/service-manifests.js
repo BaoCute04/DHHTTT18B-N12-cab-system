@@ -109,6 +109,16 @@ export const serviceManifests = {
     dataStores: ["mongodb", "redis"],
     publishes: ["RideStatusChanged"],
     consumes: ["RideCreated", "PaymentSuccess"]
+  },
+  "eta-service": {
+    key: "eta-service",
+    displayName: "ETA Service",
+    port: 3110,
+    gatewayPath: "/api/v1/eta",
+    protocols: ["REST", "Kafka"],
+    dataStores: ["redis"],
+    publishes: ["EtaResult"],
+    consumes: ["DriverLocationUpdated"]
   }
 };
 

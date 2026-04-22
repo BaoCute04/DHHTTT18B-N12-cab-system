@@ -10,7 +10,6 @@ const { calculateETA } = require('./eta.service');
 const { updateDriverLocation } = require('./location.service');
 const { publishRideEvent } = require('./kafka.publisher');
 const { isMongoConnected } = require('../database/mongoose');
-const messageBroker = require('../utils/messageBroker');
 
 
 const rides = new Map();
@@ -94,6 +93,38 @@ async function emitDriverAssigned(ride, extra = {}) {
     }, ride.driverId || ride.rideId);
   } catch (error) {
     console.warn('[ride.service] failed to publish driver.assigned:', error.message);
+  }
+}
+
+async function emitDriverLocationUpdated(ride, location, extra = {}) {
+  if (!ride || !location) {
+    return;
+  }
+
+  try {
+    await publishRideEvent(
+      'driver.location.updated',
+      {
+        eventType: 'DriverLocationUpdated',
+        rideId: ride.rideId,
+        bookingId: ride.bookingId,
+        userId: ride.userId,
+        driverId: ride.driverId || null,
+        status: ride.status,
+        etaMinutes: ride.etaMinutes ?? null,
+        location: {
+          lat: location.lat,
+          lng: location.lng,
+          address: location.address || null,
+          updatedAt: location.updatedAt || ride.updatedAt || null,
+        },
+        updatedAt: ride.updatedAt,
+        ...extra,
+      },
+      ride.driverId || ride.rideId
+    );
+  } catch (error) {
+    console.warn('[ride.service] failed to publish driver.location.updated:', error.message);
   }
 }
 
@@ -182,18 +213,8 @@ async function createRide(rideData) {
     });
 
   const savedRide = await saveRide(ride);
-
-
-  await messageBroker.publish('ride.status.changed', {
-    event_type: 'RIDE_CREATED',
-    rideId: ride.rideId,
-    bookingId: ride.bookingId,
-    userId: ride.userId,
-    driverId: ride.driverId,
-    status: ride.status,
-    pickup: ride.pickup,
-    destination: ride.destination,
-    timestamp: new Date().toISOString()
+  await emitRideStatusChanged(serializeRide(savedRide), {
+    action: 'created',
   });
 
   return savedRide;
@@ -245,6 +266,8 @@ async function updateRideLocation(rideId, driverId, location) {
     throw new Error('Invalid location: must include lat and lng');
   }
 
+  const previousStatus = ride.status;
+
   if (usesMongo()) {
     ride.currentLocation = location;
     ride.updatedAt = new Date();
@@ -257,16 +280,22 @@ async function updateRideLocation(rideId, driverId, location) {
       ride.status === RIDE_STATUS.DRIVER_ASSIGNED ||
       ride.status === RIDE_STATUS.DRIVER_ARRIVING
     ) {
-      ride.etaMinutes = calculateETA(location, ride.pickup);
+      ride.etaMinutes = await calculateETA(location, ride.pickup);
     } else if (ride.status === RIDE_STATUS.IN_PROGRESS) {
-      ride.etaMinutes = calculateETA(location, ride.destination);
+      ride.etaMinutes = await calculateETA(location, ride.destination);
     }
 
     await ride.save();
     await updateDriverLocation(driverId, location);
-    await emitRideStatusChanged(serializeRide(ride), {
+    await emitDriverLocationUpdated(serializeRide(ride), location, {
       action: 'location-updated',
     });
+    if (ride.status !== previousStatus) {
+      await emitRideStatusChanged(serializeRide(ride), {
+        action: 'status-transition',
+        previousStatus,
+      });
+    }
     return ride;
   }
 
@@ -281,16 +310,22 @@ async function updateRideLocation(rideId, driverId, location) {
     ride.status === RIDE_STATUS.DRIVER_ASSIGNED ||
     ride.status === RIDE_STATUS.DRIVER_ARRIVING
   ) {
-    ride.etaMinutes = calculateETA(location, ride.pickup);
+    ride.etaMinutes = await calculateETA(location, ride.pickup);
   } else if (ride.status === RIDE_STATUS.IN_PROGRESS) {
-    ride.etaMinutes = calculateETA(location, ride.destination);
+    ride.etaMinutes = await calculateETA(location, ride.destination);
   }
 
   await updateDriverLocation(driverId, location);
   await saveRide(ride);
-  await emitRideStatusChanged(serializeRide(ride), {
+  await emitDriverLocationUpdated(serializeRide(ride), location, {
     action: 'location-updated',
   });
+  if (ride.status !== previousStatus) {
+    await emitRideStatusChanged(serializeRide(ride), {
+      action: 'status-transition',
+      previousStatus,
+    });
+  }
   return ride;
 }
 
@@ -319,30 +354,23 @@ async function startRide(rideId, driverId) {
     ride.startedAt = new Date();
     ride.updatedAt = new Date();
     if (ride.currentLocation) {
-      ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
+      ride.etaMinutes = await calculateETA(ride.currentLocation, ride.destination);
     }
     await ride.save();
-
   } else {
     ride.status = RIDE_STATUS.IN_PROGRESS;
     ride.startedAt = new Date().toISOString();
     ride.updatedAt = new Date().toISOString();
     if (ride.currentLocation) {
-      ride.etaMinutes = calculateETA(ride.currentLocation, ride.destination);
+      ride.etaMinutes = await calculateETA(ride.currentLocation, ride.destination);
     }
     await saveRide(ride);
   }
 
-  await messageBroker.publish('ride.status.changed', {
-    event_type: 'RIDE_STARTED',
-    rideId: ride.rideId,
-    userId: ride.userId,
-    status: ride.status,
+  await emitRideStatusChanged(serializeRide(ride), {
+    action: 'started',
     startedAt: ride.startedAt,
-    timestamp: new Date().toISOString()
   });
-
-
   return ride;
 }
 
@@ -378,13 +406,9 @@ async function completeRide(rideId, driverId) {
     await saveRide(ride);
   }
 
-  await messageBroker.publish('ride.status.changed', {
-    event_type: 'RIDE_COMPLETED',
-    rideId: ride.rideId,
-    userId: ride.userId,
-    status: ride.status,
+  await emitRideStatusChanged(serializeRide(ride), {
+    action: 'completed',
     completedAt: ride.completedAt,
-    timestamp: new Date().toISOString()
   });
 
 
@@ -418,13 +442,9 @@ async function cancelRide(rideId, userId = null, driverId = null, reason = '') {
     await saveRide(ride);
   }
 
-  await messageBroker.publish('ride.status.changed', {
-    event_type: 'RIDE_CANCELLED',
-    rideId: ride.rideId,
-    userId: ride.userId,
-    status: ride.status,
-    reason: reason,
-    timestamp: new Date().toISOString()
+  await emitRideStatusChanged(serializeRide(ride), {
+    action: 'cancelled',
+    reason,
   });
 
   return ride;

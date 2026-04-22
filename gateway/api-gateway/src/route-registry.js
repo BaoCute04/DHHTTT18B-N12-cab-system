@@ -11,7 +11,8 @@ const familyRoleMap = {
   "matching-service": ["Customer", "Driver", "Admin"],
   "payment-service": ["Customer", "Admin"],
   "notification-service": ["Customer", "Driver", "Admin"],
-  "review-service": ["Customer", "Driver", "Admin"]
+  "review-service": ["Customer", "Driver", "Admin"],
+  "eta-service": ["Customer", "Driver", "Admin"]
 };
 
 export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 5000 } = {}) {
