@@ -36,8 +36,6 @@ rtk.exe
 /RULES.md
 
 .sisyphus/
-/skills/
-skills/
 skills-lock.json
 
 # Python
