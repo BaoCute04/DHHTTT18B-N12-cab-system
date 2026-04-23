@@ -102,6 +102,8 @@ Review các file code quan trọng nhất. Luôn bắt đầu từ:
 ### 0. Yêu cầu lưu trữ (Persistence)
 - **Đường dẫn**: `docs/security/audits/`
 - **File Báo cáo**: `<DD-MM-YYYY>-<service>-service.md` (Ghi lại lịch sử từng lần audit).
+  - **Ngôn ngữ**: Phải sử dụng **tiếng Việt** cho toàn bộ nội dung báo cáo.
+  - **Độ chi tiết**: Phải ghi **đầy đủ chi tiết**, không rút gọn text, liệt kê rõ từng lỗ hổng và bằng chứng cụ thể.
 - **File Checklist**: `checklist-<service>.md` (File tương tác để track trạng thái fix của developer).
 
 ### 1-bis. Cấu trúc Checklist Fix Tracking (`checklist-<service>.md`)

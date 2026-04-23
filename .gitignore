@@ -12,12 +12,28 @@ npm-debug.log*
 
 rtk.exe
 
-# Ignore all in .agents but allow the tracked security audit skill
+# Ignore everything in .agents
 .agents/*
+
+# Keep .agents/skills path
+!.agents/skills
 !.agents/skills/
+
+# Ignore all skills by default
 .agents/skills/*
+
+# Keep only these two skills
+!.agents/skills/cab-security-audit
 !.agents/skills/cab-security-audit/
+!.agents/skills/cab-scalability-resilience
+!.agents/skills/cab-scalability-resilience/
+
+# Keep all files inside them
 !.agents/skills/cab-security-audit/**
+!.agents/skills/cab-scalability-resilience/**
+
+# Exclude root RULES.md
+/RULES.md
 
 .sisyphus/
 /skills/
@@ -56,7 +72,5 @@ coverage.xml
 
 CAB_V2.md
 images
-markitdown/
 *.docx
 ~$*.docx
-CAB-BOOKING-SYSTEM.docx
