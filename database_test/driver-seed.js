@@ -11,7 +11,7 @@ db.drivers.insertMany([
     "vehicleType": "car",
     "vehiclePlate": "51G-888.88",
     "status": "OFFLINE",
-    "availability": "AVAILABLE",
+    "availability": "BUSY",
     "location": {
       "lat": 10.762,
       "lng": 106.660,

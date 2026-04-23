@@ -10,7 +10,7 @@ import { findDriver, listAvailableDrivers, upsertDriver, updateDriverStatus, upd
 
 import { publishDriverEvent } from "../services/kafka-publisher.js";
 
-import { publishDriverToZone, removeDriverFromZone } from "../utils/redis.js";
+import { publishDriverToZone, removeDriverFromZone, publishDriverToGeo } from "../utils/redis.js";
 
 
 export async function getAvailableDrivers(request, response) {
@@ -70,6 +70,13 @@ export async function patchDriver(request, response) {
 
     const message = existingDriver ? "Driver updated" : "Driver created";
 
+    // [NHIỆM VỤ 1] Nếu ONLINE thì đẩy vào Redis Geo và Zone
+    if (driver.status === DRIVER_STATUS.ONLINE && driver.location?.lat && driver.location?.lng) {
+      await publishDriverToGeo(request.params.driverId, driver.location.lat, driver.location.lng);
+      await publishDriverToZone(request.params.driverId, driver.location.lat, driver.location.lng);
+      console.log(`[STRICT-DEBUG] Dispatched both Geo and Zone for ${request.params.driverId}`);
+    }
+
     return response.json(
       createResponse({
         message,
@@ -97,6 +104,13 @@ export async function goOnline(request, response) {
 
     if (!updatedDriver) {
       return createErrorResponse(response, 500, "Failed to update driver status", request);
+    }
+
+    // [NHIỆM VỤ 1] Khi Go Online, đẩy tọa độ vào Redis Geo và Zone
+    if (updatedDriver.location?.lat && updatedDriver.location?.lng) {
+      await publishDriverToGeo(request.params.driverId, updatedDriver.location.lat, updatedDriver.location.lng);
+      await publishDriverToZone(request.params.driverId, updatedDriver.location.lat, updatedDriver.location.lng);
+      console.log(`[STRICT-DEBUG] goOnline dispatched for ${request.params.driverId}`);
     }
 
     return response.json(

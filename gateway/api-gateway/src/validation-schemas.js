@@ -82,8 +82,9 @@ export const httpSchemas = {
       pickup: coordinatesSchema,
       drop: coordinatesSchema, // 
       vehicleType: z.enum(["bike", "car", "car_plus"]),
-      distanceKm: z.number(),        
+      distanceKm: z.number().optional(),        
       paymentMethod: z.string(),      
+      quoteId: z.string().optional(),
       priceSnapshot: priceSnapshotSchema
     })
     .strict(), 

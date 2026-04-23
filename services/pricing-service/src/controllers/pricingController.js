@@ -1,4 +1,5 @@
 import PricingRule from '../models/PricingRule.js';
+import axios from 'axios';
 import { logger } from '../utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
 import { saveQuote } from '../utils/redis.js';
@@ -16,9 +17,28 @@ const formatResponse = (message, data, req) => ({
 export const getQuote = async (req, res) => {
     const reqId = req.headers['x-request-id'] || uuidv4();
     try {
-        // 1. Nhận tọa độ điểm đón + thông tin cuốc xe
-        const { pickupLat, pickupLng, pickupAddress, distanceKm, durationMin, vehicleType } = req.body;
-        logger.info('Received quote request', { reqId, vehicleType, distanceKm, pickupLat, pickupLng });
+        // 1. Nhận tọa độ điểm đón + điểm trả + thông tin cuốc xe
+        const { pickupLat, pickupLng, dropLat, dropLng, vehicleType } = req.body;
+        let { distanceKm, durationMin } = req.body;
+
+        // [NHIỆM VỤ 1] Tự động tính Distance/ETA nếu chỉ có tọa độ
+        if (!distanceKm || !durationMin) {
+            try {
+                const etaResponse = await axios.post(`${process.env.ETA_SERVICE_URL || 'http://eta-service:3110'}/api/v1/eta/calculate`, {
+                    origin: { lat: pickupLat, lng: pickupLng },
+                    destination: { lat: dropLat, lng: dropLng }
+                });
+                if (etaResponse.data.success) {
+                    distanceKm = etaResponse.data.data.distanceKm;
+                    durationMin = etaResponse.data.data.etaMinutes;
+                    logger.info('Auto-calculated ETA/Distance', { distanceKm, durationMin });
+                }
+            } catch (err) {
+                logger.warn('Failed to call ETA service, using defaults or payload', { error: err.message });
+                distanceKm = distanceKm || 5;
+                durationMin = durationMin || 15;
+            }
+        }
 
         // 2. Lấy giá cơ bản từ DB
         let rule = await PricingRule.findOne({ vehicleType }) || await PricingRule.findOne({ vehicleType: 'standard' });
