@@ -119,7 +119,7 @@ CAB-BOOKING-SYSTEM/
 3. **Install dependencies for each service**
    ```bash
    # Matching Service
-   cd services/matching-service
+   cd AI-ML/matching-service
    pip install -r requirements.txt
 
    # API Gateway
@@ -134,7 +134,7 @@ CAB-BOOKING-SYSTEM/
 4. **Run services**
    ```bash
    # Matching Service
-   cd services/matching-service
+   cd AI-ML/matching-service
    python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
    # API Gateway

@@ -159,6 +159,86 @@ async function calculateRideEstimates(driverLocation, pickup, destination, opts 
   };
 }
 
+async function calculateTrackingETA(opts = {}) {
+  const {
+    rideId = null,
+    driverId: driverIdInput = null,
+    pickup: pickupInput = null,
+    destination: destinationInput = null,
+    segment: segmentInput = 'toPickup',
+    skipCache = false,
+    biasContext = {},
+  } = opts;
+
+  const activeRide = rideId ? await getActiveRide(rideId) : null;
+  const driverId = driverIdInput || activeRide?.driverId || null;
+  const pickup = pickupInput || activeRide?.pickup || null;
+  const destination = destinationInput || activeRide?.destination || null;
+  const normalizedSegment = segmentInput || 'toPickup';
+
+  if (!driverId) {
+    throw new Error('driverId is required for tracking ETA');
+  }
+
+  const cachedDriverLocation = await getDriverLocation(driverId);
+  const fallbackDriverLocation =
+    normalizeCoordinatePoint(activeRide?.currentLocation) ||
+    normalizeCoordinatePoint(activeRide?.lastDriverLocation);
+  const driverLocation = cachedDriverLocation || fallbackDriverLocation;
+
+  if (!driverLocation) {
+    const error = new Error('Tracked driver location not found');
+    error.code = 'DRIVER_LOCATION_NOT_FOUND';
+    throw error;
+  }
+
+  let result = null;
+  if (normalizedSegment === 'ride-estimates') {
+    if (!pickup || !destination) {
+      throw new Error('pickup and destination are required for ride-estimates tracking');
+    }
+
+    result = await calculateRideEstimates(driverLocation, pickup, destination, {
+      rideId,
+      skipCache,
+      biasContext,
+    });
+  } else if (normalizedSegment === 'toDestination') {
+    if (!destination) {
+      throw new Error('destination is required for tracking ETA to destination');
+    }
+
+    result = await calculateETA(driverLocation, destination, {
+      rideId,
+      segment: normalizedSegment,
+      skipCache,
+      biasContext,
+    });
+  } else {
+    if (!pickup) {
+      throw new Error('pickup is required for tracking ETA to pickup');
+    }
+
+    result = await calculatePickupETA(driverLocation, pickup, {
+      rideId,
+      skipCache,
+      biasContext,
+    });
+  }
+
+  return {
+    rideId,
+    driverId,
+    segment: normalizedSegment,
+    driverLocation,
+    locationSource: cachedDriverLocation ? 'redis-driver-location' : 'active-ride-snapshot',
+    activeRideFound: Boolean(activeRide),
+    pickup,
+    destination,
+    eta: result,
+  };
+}
+
 async function updateDriverLocation(driverId, location) {
   if (!driverId) {
     throw new Error('driverId is required');
@@ -228,6 +308,19 @@ async function handleDriverLocationUpdated(eventPayload) {
     eventPayload.rideId || null
   );
 
+  if (eventPayload.rideId) {
+    const activeRide = await getActiveRide(eventPayload.rideId);
+    if (activeRide) {
+      await saveActiveRide(eventPayload.rideId, {
+        ...activeRide,
+        driverId: eventPayload.driverId,
+        currentLocation: savedLocation,
+        lastDriverLocation: savedLocation,
+        lastLocationEventAt: eventPayload.updatedAt || savedLocation.updatedAt,
+      });
+    }
+  }
+
   return {
     driverId: eventPayload.driverId,
     rideId: eventPayload.rideId || null,
@@ -291,6 +384,7 @@ module.exports = {
   calculateETA,
   calculatePickupETA,
   calculateRideEstimates,
+  calculateTrackingETA,
   updateDriverLocation,
   getDriverLocation,
   removeDriverLocation,

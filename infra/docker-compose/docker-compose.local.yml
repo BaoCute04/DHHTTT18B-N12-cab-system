@@ -103,11 +103,11 @@ services:
   matching-service:
     build:
       context: ../..
-      dockerfile: services/matching-service/Dockerfile
+      dockerfile: AI-ML/matching-service/Dockerfile
     image: cab-matching-service:local
     container_name: cab-matching-service
     env_file:
-      - ../../services/matching-service/.env.docker
+      - ../../AI-ML/matching-service/.env.docker
     ports:
       - "8000:8000"
     volumes:
@@ -127,11 +127,11 @@ services:
   surge-pricing-service:
     build:
       context: ../..
-      dockerfile: services/surge-pricing-service/Dockerfile
+      dockerfile: AI-ML/surge-pricing-service/Dockerfile
     image: cab-surge-pricing-service:local
     container_name: cab-surge-pricing-service
     env_file:
-      - ../../services/surge-pricing-service/.env.docker
+      - ../../AI-ML/surge-pricing-service/.env.docker
     expose:
       - "8001"
     volumes:
@@ -280,18 +280,18 @@ services:
   eta-service:
     build:
       context: ../..
-      dockerfile: AI/ML/eta-service/Dockerfile
+      dockerfile: AI-ML/eta-service/Dockerfile
     image: cab-eta-service:local
     container_name: cab-eta-service
     env_file:
-      - ../../AI/ML/eta-service/.env.docker
+      - ../../AI-ML/eta-service/.env.docker
     expose:
       - "3110"
     depends_on:
       eta-redis:
         condition: service_started
-      kafka:
-        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - cab-services
       - eta-data

@@ -98,38 +98,54 @@ async function startDriverLocationConsumer({ onDriverLocationUpdated }) {
     return { started: true, reused: true };
   }
 
-  consumer = getKafka().consumer({ groupId: config.kafkaConsumerGroupId });
-  await consumer.connect();
-  await consumer.subscribe({ topic: config.driverLocationTopic, fromBeginning: false });
-  await consumer.run({
-    eachMessage: async ({ message }) => {
-      if (!message?.value) {
-        return;
-      }
+  const candidateConsumer = getKafka().consumer({ groupId: config.kafkaConsumerGroupId });
 
-      let parsed;
-      try {
-        parsed = JSON.parse(message.value.toString('utf8'));
-      } catch (error) {
-        console.warn('[ETA-Kafka] Invalid driver location payload:', error.message);
-        return;
-      }
+  try {
+    await candidateConsumer.connect();
+    await candidateConsumer.subscribe({ topic: config.driverLocationTopic, fromBeginning: false });
+    await candidateConsumer.run({
+      eachMessage: async ({ message }) => {
+        if (!message?.value) {
+          return;
+        }
 
-      const normalized = normalizeDriverLocationEvent(parsed);
-      if (!normalized) {
-        console.warn('[ETA-Kafka] Ignored driver location event with incomplete payload');
-        return;
-      }
+        let parsed;
+        try {
+          parsed = JSON.parse(message.value.toString('utf8'));
+        } catch (error) {
+          console.warn('[ETA-Kafka] Invalid driver location payload:', error.message);
+          return;
+        }
 
-      if (typeof onDriverLocationUpdated === 'function') {
-        await onDriverLocationUpdated(normalized);
-      }
-    },
-  });
+        const normalized = normalizeDriverLocationEvent(parsed);
+        if (!normalized) {
+          console.warn('[ETA-Kafka] Ignored driver location event with incomplete payload');
+          return;
+        }
 
-  consumerStarted = true;
-  console.log(`[ETA-Kafka] consuming ${config.driverLocationTopic}`);
-  return { started: true, reused: false };
+        if (typeof onDriverLocationUpdated === 'function') {
+          await onDriverLocationUpdated(normalized);
+        }
+      },
+    });
+
+    consumer = candidateConsumer;
+    consumerStarted = true;
+    console.log(`[ETA-Kafka] consuming ${config.driverLocationTopic}`);
+    return { started: true, reused: false };
+  } catch (error) {
+    try {
+      await candidateConsumer.disconnect();
+    } catch (_) {
+      // ignore cleanup errors for failed startup attempts
+    }
+
+    if (consumer === candidateConsumer) {
+      consumer = null;
+    }
+    consumerStarted = false;
+    throw error;
+  }
 }
 
 async function shutdownKafka() {

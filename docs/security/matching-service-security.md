@@ -1,4 +1,4 @@
-# CAB-BOOKING Security Review Workflow ? WORKFLOW 11 — MATCHING-SERVICE
+﻿# CAB-BOOKING Security Review Workflow ? WORKFLOW 11 — MATCHING-SERVICE
 
 Ngày tạo: `2026-04-20`
 
@@ -54,7 +54,7 @@ Phạm vi tài liệu này là tạo một bộ workflow thực chiến để t�
 | `ride-service` | Observed | `services/ride-service/*` | Có lifecycle + WebSocket + ETA module nội bộ |
 | `user-service` | Observed | `services/user-service/*` | Có user/profile/preferences/payment refs trên Postgres |
 | `eta-service` | Expected architecture workflow | `services/ride-service/src/services/eta.service.js`, `platform/architecture/ai-topology.js`, `data-layer/redis/geo-topology.json` | Chưa tách service riêng |
-| `matching-service` | Observed | `services/matching-service/*`, `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`, `platform/node/ai-layer.js` | Có runtime FastAPI cho AI matching, feature store, training và background model serving |
+| `matching-service` | Observed | `AI-ML/matching-service/*`, `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`, `platform/node/ai-layer.js` | Có runtime FastAPI cho AI matching, feature store, training và background model serving |
 | `api-gateway` | Observed, shared control plane | `gateway/api-gateway/*` | Không tạo workflow riêng; dùng như evidence xuyên suốt |
 
 ### 1.4 Trust boundaries tổng thể
@@ -222,16 +222,16 @@ Phạm vi tài liệu này là tạo một bộ workflow thực chiến để t�
 - Expected by CAB architecture:
   - feature store, training pipeline, serving API, dataset access control, inference auth, model lifecycle audit.
 - Preliminary repo-backed concerns:
-  - Observed runtime: đã có `services/matching-service/*` với FastAPI runtime, scheduler, model training, matching inference và feature ingestion.
+  - Observed runtime: đã có `AI-ML/matching-service/*` với FastAPI runtime, scheduler, model training, matching inference và feature ingestion.
   - Observed runtime differs from architecture: service hiện gom `feature store`, `training`, `matching inference` và background surge push vào cùng một runtime; `Model Serving API` vẫn chưa tách control plane riêng như sơ đồ đích.
   - Missing evidence: dataset access policy, secret handling, inference auth boundary, rollback control, model admin management.
 
 ### Runtime vs Architecture Boundary
 
 - `Observed runtime`
-  - `services/matching-service/*` là runtime FastAPI thật cho AI matching.
+  - `AI-ML/matching-service/*` là runtime FastAPI thật cho AI matching.
   - `platform/architecture/ai-topology.js`, `platform/ml/feature-store-topology.json`, `platform/node/ai-layer.js` vẫn là artifact mô tả scope AI/ML.
-  - `services/matching-service/app/routers/features.py`, `services/matching-service/app/routers/training.py`, `services/matching-service/app/routers/matching.py` cho thấy feature ingestion, training và matching inference đã tồn tại.
+  - `AI-ML/matching-service/app/routers/features.py`, `AI-ML/matching-service/app/routers/training.py`, `AI-ML/matching-service/app/routers/matching.py` cho thấy feature ingestion, training và matching inference đã tồn tại.
 - `Target architecture`
   - Feature Store
   - Model Training
@@ -698,3 +698,4 @@ Fix priority:
 - Đã ghi findings có evidence path cụ thể.
 - Đã phân loại P0/P1/P2.
 - Nếu service là `expected architecture workflow`, đã tách rõ phần nào chỉ là topology expectation.
+

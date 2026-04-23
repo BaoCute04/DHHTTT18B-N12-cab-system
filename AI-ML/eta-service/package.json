@@ -1,7 +1,7 @@
 {
   "name": "@cab/eta-ai-service",
   "version": "1.0.0",
-  "description": "AI/ML ETA Prediction Layer - Routing & Traffic integration with Redis cache",
+  "description": "AI-ML ETA Prediction Layer - Routing & Traffic integration with Redis cache",
   "type": "commonjs",
   "main": "src/index.js",
   "scripts": {

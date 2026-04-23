@@ -7,11 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies first (layer cache)
-COPY services/matching-service/requirements.txt .
+COPY AI-ML/matching-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
-COPY services/matching-service/app ./app
+COPY AI-ML/matching-service/app ./app
 
 # Persistent volume mount point for trained model artifacts
 RUN mkdir -p /app/model_store

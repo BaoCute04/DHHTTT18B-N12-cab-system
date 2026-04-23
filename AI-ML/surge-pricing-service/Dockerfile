@@ -7,11 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies first (layer cache)
-COPY services/surge-pricing-service/requirements.txt .
+COPY AI-ML/surge-pricing-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
-COPY services/surge-pricing-service/app ./app
+COPY AI-ML/surge-pricing-service/app ./app
 
 # Persistent volume mount point for trained model artifacts
 RUN mkdir -p /app/model_store

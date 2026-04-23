@@ -3,13 +3,13 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY AI/ML/eta-service/package.json AI/ML/eta-service/package.json
+COPY AI-ML/eta-service/package.json AI-ML/eta-service/package.json
 
 RUN npm ci --workspace @cab/eta-ai-service --include-workspace-root
 
-COPY AI/ML/eta-service AI/ML/eta-service
+COPY AI-ML/eta-service AI-ML/eta-service
 
-WORKDIR /app/AI/ML/eta-service
+WORKDIR /app/AI-ML/eta-service
 
 ENV PORT=3110
 EXPOSE 3110

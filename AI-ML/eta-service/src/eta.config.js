@@ -72,6 +72,8 @@ const config = {
   kafkaConsumerGroupId: process.env.KAFKA_CONSUMER_GROUP_ID || 'eta-service-driver-location',
   driverLocationTopic: process.env.DRIVER_LOCATION_TOPIC || 'driver.location.updated',
   etaResultTopic: process.env.ETA_RESULT_TOPIC || 'eta.result',
+  kafkaStartupRetryBaseMs: parseInt(process.env.KAFKA_STARTUP_RETRY_BASE_MS || '2000', 10),
+  kafkaStartupRetryMaxMs: parseInt(process.env.KAFKA_STARTUP_RETRY_MAX_MS || '30000', 10),
 };
 
 config.kafkaEnabled = config.kafkaBrokers.length > 0;
