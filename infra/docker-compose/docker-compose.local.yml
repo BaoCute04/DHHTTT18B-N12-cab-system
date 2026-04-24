@@ -11,6 +11,9 @@ services:
       - ../../gateway/api-gateway/.env.docker
     ports:
       - "3000:3000"
+    volumes:
+      - ../../gateway/api-gateway:/app/gateway/api-gateway
+      - /app/gateway/api-gateway/node_modules
     depends_on:
       auth-service:
         condition: service_started
@@ -68,6 +71,9 @@ services:
       - ../../services/booking-service/.env.docker
     expose:
       - "3103"
+    volumes:
+      - ../../services/booking-service:/app/services/booking-service
+      - /app/services/booking-service/node_modules
     depends_on:
       booking-mongodb:
         condition: service_started
@@ -77,6 +83,7 @@ services:
       - cab-services
       - booking-data
       - cab-broker
+      - ml-platform-data
 
   auth-service:
     build:
@@ -123,6 +130,8 @@ services:
       - cab-services
       - ml-platform-data
       - cab-broker
+      - booking-data
+      - driver-data
 
   surge-pricing-service:
     build:
@@ -158,6 +167,9 @@ services:
       - ../../services/pricing-service/.env.docker
     expose:
       - "3101"
+    volumes:
+      - ../../services/pricing-service:/app/services/pricing-service
+      - /app/services/pricing-service/node_modules
     depends_on:
       pricing-mongodb:
         condition: service_started

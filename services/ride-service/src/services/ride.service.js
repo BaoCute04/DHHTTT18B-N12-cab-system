@@ -4,6 +4,7 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 const { Ride, RIDE_STATUS } = require('../models/ride.model');
 const { RideMongoModel } = require('../models/ride.mongo.model');
 const { calculateETA } = require('./eta.service');
@@ -184,6 +185,26 @@ async function getRidesByDriverId(driverId) {
   );
 }
 
+async function emitRideCreated(ride, extra = {}) {
+  if (!ride) return;
+  try {
+    await publishRideEvent('ride.created.internal', {
+      eventType: 'RideInitialized',
+      rideId: ride.rideId,
+      bookingId: ride.bookingId,
+      userId: ride.userId,
+      pickup: ride.pickup,
+      destination: ride.destination,
+      priceSnapshot: ride.priceSnapshot,
+      status: ride.status,
+      updatedAt: ride.updatedAt,
+      ...extra,
+    }, ride.rideId);
+  } catch (error) {
+    console.warn('[ride.service] failed to publish ride.created.internal:', error.message);
+  }
+}
+
 async function createRide(rideData) {
   if (!rideData.bookingId || !rideData.userId) {
     throw new Error('bookingId and userId are required');
@@ -192,30 +213,39 @@ async function createRide(rideData) {
     throw new Error('pickup and destination are required');
   }
 
-  const ride = usesMongo()
-    ? new RideMongoModel({
-      rideId: uuidv4(),
-      bookingId: rideData.bookingId,
-      userId: rideData.userId,
-      driverId: rideData.driverId || null,
-      pickup: rideData.pickup,
-      destination: rideData.destination,
-      status: rideData.driverId ? RIDE_STATUS.DRIVER_ASSIGNED : RIDE_STATUS.SEARCHING,
-    })
-    : new Ride({
-      rideId: uuidv4(),
-      bookingId: rideData.bookingId,
-      userId: rideData.userId,
-      driverId: rideData.driverId || null,
-      pickup: rideData.pickup,
-      destination: rideData.destination,
-      status: rideData.driverId ? RIDE_STATUS.DRIVER_ASSIGNED : RIDE_STATUS.SEARCHING,
-    });
+  const payload = {
+    rideId: rideData.rideId || uuidv4(),
+    bookingId: rideData.bookingId,
+    userId: rideData.userId,
+    driverId: rideData.driverId || null,
+    pickup: rideData.pickup,
+    destination: rideData.destination,
+    priceSnapshot: rideData.priceSnapshot || 0,
+    quoteId: rideData.quoteId || null,
+    status: rideData.status || RIDE_STATUS.SEARCHING,
+    updatedAt: new Date().toISOString()
+  };
 
-  const savedRide = await saveRide(ride);
-  await emitRideStatusChanged(serializeRide(savedRide), {
-    action: 'created',
-  });
+  let savedRide;
+  if (usesMongo()) {
+    // Idempotency check using findOneAndUpdate with upsert
+    savedRide = await RideMongoModel.findOneAndUpdate(
+      { bookingId: payload.bookingId },
+      { $setOnInsert: payload },
+      { upsert: true, new: true }
+    );
+  } else {
+    if (rides.has(payload.rideId)) {
+      savedRide = rides.get(payload.rideId);
+    } else {
+      savedRide = new Ride(payload);
+      rides.set(payload.rideId, savedRide);
+    }
+  }
+
+  const serialized = serializeRide(savedRide);
+  await emitRideStatusChanged(serialized, { action: 'created' });
+  await emitRideCreated(serialized); // Notify matching-service
 
   return savedRide;
 }
@@ -230,13 +260,14 @@ async function assignDriver(rideId, driverId) {
     throw new Error('driverId is required');
   }
 
+  // Phase 4: Matching-service assigns a driver, but we wait for acceptance
   if (ride.status !== RIDE_STATUS.SEARCHING) {
     throw new Error(`Cannot assign driver to ride in ${ride.status} status`);
   }
 
   if (usesMongo()) {
     ride.driverId = driverId;
-    ride.status = RIDE_STATUS.DRIVER_ASSIGNED;
+    ride.status = RIDE_STATUS.WAITING_FOR_ACCEPTANCE;
     ride.updatedAt = new Date();
     await ride.save();
     await emitDriverAssigned(ride);
@@ -245,10 +276,42 @@ async function assignDriver(rideId, driverId) {
   }
 
   ride.driverId = driverId;
-  ride.updateStatus(RIDE_STATUS.DRIVER_ASSIGNED);
+  ride.updateStatus(RIDE_STATUS.WAITING_FOR_ACCEPTANCE);
   await saveRide(ride);
   await emitDriverAssigned(ride);
   await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
+  return ride;
+}
+
+async function acceptRide(rideId, driverId) {
+  const ride = await getRideById(rideId);
+  if (!ride) {
+    throw new Error('Ride not found');
+  }
+
+  if (ride.driverId !== driverId) {
+    throw new Error('Unauthorized: Driver ID mismatch');
+  }
+
+  if (ride.status !== RIDE_STATUS.WAITING_FOR_ACCEPTANCE) {
+    throw new Error(`Cannot accept ride in ${ride.status} status`);
+  }
+
+  if (usesMongo()) {
+    ride.status = RIDE_STATUS.ACCEPTED;
+    ride.updatedAt = new Date();
+    await ride.save();
+  } else {
+    ride.status = RIDE_STATUS.ACCEPTED;
+    ride.updatedAt = new Date().toISOString();
+    await saveRide(ride);
+  }
+
+  await emitRideStatusChanged(serializeRide(ride), { 
+    action: 'accepted',
+    driverId 
+  });
+  
   return ride;
 }
 
@@ -281,8 +344,8 @@ async function updateRideLocation(rideId, driverId, location) {
     ride.currentLocation = location;
     ride.updatedAt = new Date();
 
-    if (ride.status === RIDE_STATUS.DRIVER_ASSIGNED) {
-      ride.status = RIDE_STATUS.DRIVER_ARRIVING;
+    if (ride.status === RIDE_STATUS.ACCEPTED) {
+       ride.status = RIDE_STATUS.DRIVER_ARRIVING;
     }
 
     if (
@@ -311,12 +374,12 @@ async function updateRideLocation(rideId, driverId, location) {
   ride.currentLocation = location;
   ride.updatedAt = new Date().toISOString();
 
-  if (ride.status === RIDE_STATUS.DRIVER_ASSIGNED) {
+  if (ride.status === RIDE_STATUS.ACCEPTED) {
     ride.status = RIDE_STATUS.DRIVER_ARRIVING;
   }
 
   if (
-    ride.status === RIDE_STATUS.DRIVER_ASSIGNED ||
+    ride.status === RIDE_STATUS.ACCEPTED ||
     ride.status === RIDE_STATUS.DRIVER_ARRIVING
   ) {
     ride.etaMinutes = await calculateETA(location, ride.pickup);
@@ -420,6 +483,25 @@ async function completeRide(rideId, driverId) {
     completedAt: ride.completedAt,
   });
 
+  // [BỔ SUNG] Giải phóng tài xế sang AVAILABLE
+  try {
+    const driverServiceUrl = process.env.DRIVER_SERVICE_URL || 'http://driver-service:3107';
+    await axios.patch(`${driverServiceUrl}/api/v1/drivers/${ride.driverId}`, {
+      availability: 'AVAILABLE'
+    });
+    console.log(`🔓 [Ride Service] Driver ${ride.driverId} set back to AVAILABLE`);
+
+    // [BỔ SUNG] Cập nhật Booking sang COMPLETED
+    const bookingServiceUrl = process.env.BOOKING_SERVICE_URL || 'http://booking-service:3103';
+    await axios.patch(`${bookingServiceUrl}/api/v1/bookings/${ride.bookingId}`, {
+      status: 'COMPLETED'
+    });
+    console.log(`✅ [Ride Service] Booking ${ride.bookingId} set to COMPLETED`);
+
+  } catch (error) {
+    console.error(`⚠️ [Ride Service] Failed to sync status to other services: ${error.message}`);
+  }
+
 
   return ride;
 }
@@ -513,7 +595,7 @@ module.exports = {
   getRideById,
   getRidesByUserId,
   getRidesByDriverId,
-  assignDriver,
+  acceptRide,
   updateRideLocation,
   startRide,
   completeRide,

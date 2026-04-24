@@ -28,6 +28,19 @@ function createOtpAuthService(options) {
     return {
         async requestOtp({ role, destination, channel, requestId }) {
             try {
+                // 1. CHECK IF ACCOUNT EXISTS FIRST (STRICT)
+                const existingAccount = await authAccountsRepository.findByDestination({
+                    destination,
+                    destinationType: channelToDestinationType(channel),
+                });
+
+                if (!existingAccount) {
+                    const error = new Error('Số điện thoại không tồn tại trong hệ thống. Vui lòng liên hệ quản trị viên.');
+                    error.statusCode = 404;
+                    error.code = 'ACCOUNT_NOT_FOUND';
+                    throw error;
+                }
+
                 const keyContext = { role, destination };
                 const challengeKey = buildOtpChallengeKey(keyContext);
                 const cooldownKey = buildOtpCooldownKey(keyContext);
@@ -191,30 +204,25 @@ function createOtpAuthService(options) {
 
                 await redisClient.del(challengeKey, attemptsKey, cooldownKey, lockKey);
 
-                let account = await authAccountsRepository.findByDestination({
+                const account = await authAccountsRepository.findByDestination({
                     destination,
                     destinationType: channelToDestinationType(challenge.channel),
                 });
 
                 if (!account) {
-                    account = await authAccountsRepository.createAccount({
-                        destination,
-                        destinationType: channelToDestinationType(challenge.channel),
-                        status: 'active',
-                    });
+                    const error = new Error('Tài khoản không tồn tại hoặc đã bị xóa');
+                    error.statusCode = 404;
+                    error.code = 'ACCOUNT_NOT_FOUND';
+                    throw error;
                 }
                 ensureAccountIsActive(account);
 
                 await authAccountsRepository.assignRole({ accountId: account.id, role });
                 const accountWithRoles = await authAccountsRepository.getAccountWithRoles(account.id);
                 ensureAccountIsActive(accountWithRoles);
-                const bootstrap = await bootstrapProfile({
-                    bootstrapService,
-                    logger,
-                    requestId,
-                    role,
-                    account: accountWithRoles,
-                });
+                
+                // SKIPPING BOOTSTRAP - Only use existing profiles
+                const bootstrap = { status: 'skipped', reason: 'manual_registration_only' };
                 const tokens = tokenService
                     ? await tokenService.issueOtpLoginTokens({
                           account: accountWithRoles,

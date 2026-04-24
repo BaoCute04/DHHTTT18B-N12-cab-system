@@ -1,4 +1,49 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { request } from "@/services/httpClient.js";
+
 export function DriverLoginOtpRequestPage() {
+  const navigate = useNavigate();
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleRequestOtp = async () => {
+    if (!phone) {
+      alert("Vui lòng nhập số điện thoại");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await request("/api/v1/auth/otp/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: "driver",
+          destination: phone,
+          channel: "sms"
+        })
+      });
+
+      const result = await response.json();
+      if (result.success || result.challengeStatus === "accepted") {
+        if (result.debugOtpCode) {
+          console.log("DEBUG OTP CODE:", result.debugOtpCode);
+          alert(`Mã OTP Driver (Debug): ${result.debugOtpCode}`);
+        }
+        localStorage.setItem("temp_driver_login_phone", phone);
+        navigate("/driver/auth/verify-otp");
+      } else {
+        alert(result.message || "Không thể gửi OTP");
+      }
+    } catch (error) {
+      console.error("OTP Request Error:", error);
+      alert("Lỗi kết nối server (Kiểm tra Gateway)");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -15,16 +60,29 @@ export function DriverLoginOtpRequestPage() {
         <div className="flex-1 flex flex-col justify-center px-6">
           <label className="text-sm font-medium text-slate-700 mb-2">Số điện thoại</label>
 
-          <div className="flex items-center rounded-xl border px-4 py-3 mb-3">
+          <div className="flex items-center rounded-xl border px-4 py-3 mb-3 focus-within:ring-2 focus-within:ring-slate-900">
             <span className="text-slate-400 mr-2 text-sm">+84</span>
-            <input type="tel" placeholder="Nhập số điện thoại" className="flex-1 outline-none text-sm" />
+            <input
+              type="tel"
+              placeholder="Nhập số điện thoại"
+              className="flex-1 outline-none text-sm"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleRequestOtp()}
+            />
           </div>
 
-          <p className="text-xs text-slate-500 mb-6">Mã OTP sẽ được gửi tới số điện thoại của bạn</p>
+          <p className="text-xs text-slate-500 mb-6">Mã OTP sẽ được gửi tới số điện thoại (Debug sẽ hiện alert)</p>
         </div>
 
         <div className="px-6 pb-8">
-          <button className="w-full rounded-xl bg-slate-900 text-white py-3.5 text-sm font-medium active:scale-[0.98]">
+          <button
+            className={`w-full rounded-xl bg-slate-900 text-white py-3.5 text-sm font-medium active:scale-[0.98] flex items-center justify-center gap-2 ${loading ? "opacity-70 pointer-events-none" : ""
+              }`}
+            onClick={handleRequestOtp}
+            disabled={loading}
+          >
+            {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             Gửi mã OTP
           </button>
         </div>

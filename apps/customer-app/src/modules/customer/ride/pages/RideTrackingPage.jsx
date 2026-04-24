@@ -1,4 +1,28 @@
+import { useBooking } from "@app/BookingProvider.jsx";
+import { useNavigate } from "react-router-dom";
+import { useEffect, useContext, useState } from "react";
+import { RealtimeContext } from "@app/RealtimeProvider.jsx";
+
 export function RideTrackingPage() {
+  const navigate = useNavigate();
+  const { ride, setRide, destination } = useBooking();
+  const { connection } = useContext(RealtimeContext);
+  const [eta, setEta] = useState(10);
+
+  useEffect(() => {
+    if (!ride) {
+      navigate("/customer/booking/pickup");
+      return;
+    }
+
+    if (connection) {
+       // Status check
+       if (ride.status === "COMPLETED") {
+          navigate("/customer/review/rating");
+       }
+    }
+  }, [ride, navigate, connection]);
+
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden relative">
@@ -25,7 +49,7 @@ export function RideTrackingPage() {
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">🚗</div>
             <div className="flex-1">
               <p className="text-sm font-semibold">Đang trên đường</p>
-              <p className="text-xs text-slate-500">Còn khoảng 10 phút đến điểm đến</p>
+              <p className="text-xs text-slate-500">Còn khoảng {eta} phút đến điểm đến</p>
             </div>
           </div>
 
@@ -36,11 +60,11 @@ export function RideTrackingPage() {
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span>Thời gian dự kiến</span>
-              <span>10 phút</span>
+              <span>{eta} phút</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Điểm đến</span>
-              <span>Vincom Đồng Khởi</span>
+              <span className="truncate ml-4">{destination?.address || "Vincom Đồng Khởi"}</span>
             </div>
           </div>
 
@@ -49,11 +73,9 @@ export function RideTrackingPage() {
               Gọi tài xế
             </button>
             <button className="flex-1 rounded-xl border border-red-300 py-3 text-sm font-medium text-red-600 active:scale-[0.98]">
-              Huỷ chuyến
+              Trợ giúp
             </button>
           </div>
-
-          <div className="h-4"></div>
         </div>
       </div>
     </div>

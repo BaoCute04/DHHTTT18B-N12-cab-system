@@ -300,6 +300,60 @@ async function assignDriver(req, res) {
   }
 }
 
+async function acceptRide(req, res) {
+  try {
+    const requestId = generateRequestId();
+    const actor = requireAuthenticatedActor(req);
+    const { rideId } = req.params;
+    const actorId = actor.userId || actor.subjectId;
+
+    // Only the assigned driver (or admin) can accept
+    if (actor.role !== 'Driver' && !isAdminActor(actor)) {
+      throw createHttpError(403, 'Only drivers or admins can accept rides');
+    }
+
+    const ride = await rideService.acceptRide(rideId, actorId);
+
+    auditRideSuccess(req, {
+      action: 'ride.accept',
+      targetType: 'ride',
+      targetId: ride.rideId || rideId,
+      metadata: {
+        driverId: actorId,
+        status: ride.status
+      }
+    });
+
+    return res.json(
+      createResponse({
+        success: true,
+        message: 'Ride accepted',
+        data: ride.toJSON(),
+        requestId,
+      })
+    );
+  } catch (error) {
+    recordAuditEvent(req, {
+      action: 'ride.accept',
+      targetType: 'ride',
+      targetId: req.params?.rideId || null,
+      outcome: 'failure',
+      metadata: {
+        driverId: req.auth?.userId || null
+      },
+      error
+    });
+    const statusCode = error.statusCode || 400;
+    return res.status(statusCode).json(
+      createResponse({
+        success: false,
+        message: error.message,
+        statusCode,
+      })
+    );
+  }
+}
+
 async function updateLocation(req, res) {
   try {
     const requestId = generateRequestId();
@@ -724,6 +778,7 @@ module.exports = {
   getRide,
   getUserRides,
   assignDriver,
+  acceptRide,
   updateLocation,
   startRide,
   completeRide,

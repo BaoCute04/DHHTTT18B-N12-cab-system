@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY AI-ML/eta-service/package.json AI-ML/eta-service/package.json
+COPY platform platform
 
 RUN npm ci --workspace @cab/eta-ai-service --include-workspace-root
 

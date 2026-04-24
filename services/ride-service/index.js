@@ -24,6 +24,19 @@ async function startServer() {
   try {
     const messageBroker = require('./src/utils/messageBroker');
     await messageBroker.connect();
+    
+    // START KAFKA CONSUMERS (Phase 1 & 3)
+    try {
+      const { getEnv } = require('./src/config/env.js');
+      const { startPaymentConsumer } = require('./src/events/paymentConsumer.js');
+      const { startBookingConsumer } = require('./src/events/bookingConsumer.js');
+      const env = getEnv();
+      await startPaymentConsumer(env);
+      await startBookingConsumer(env);
+      console.log('[Kafka] All consumers (Payment, Booking) started');
+    } catch (consumerError) {
+      console.warn('[Kafka] Consumers failed to start:', consumerError.message);
+    }
   } catch (error) {
     console.warn('[Kafka] Connection skipped or failed:', error.message);
   }

@@ -32,14 +32,14 @@ export const httpSchemas = {
     .strict(),
   authOtpRequest: z
     .object({
-      destination: z.string().min(3).max(255),
+      destination: z.string().regex(/^(0|\+84)[0-9]{9,10}$/, "Số điện thoại không đúng định dạng (10-11 chữ số)"),
       role: z.enum(["customer", "driver"]),
       channel: z.enum(["sms", "email"]).optional()
     })
     .strict(),
   authOtpVerify: z
     .object({
-      destination: z.string().min(3).max(255),
+      destination: z.string().regex(/^(0|\+84)[0-9]{9,10}$/, "Số điện thoại không đúng định dạng (10-11 chữ số)"),
       role: z.enum(["customer", "driver"]),
       code: z.string().regex(/^\d{6}$/)
     })

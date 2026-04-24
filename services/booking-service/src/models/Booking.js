@@ -14,7 +14,7 @@ const bookingSchema = new mongoose.Schema({
     // Lộ trình (Bám sát TC3, TC11)
     pickup: { type: locationSchema, required: true },
     drop: { type: locationSchema, required: true },
-    distanceKm: { type: Number, required: true },
+    distanceKm: { type: Number, required: false },
 
     // Thông tin dịch vụ (Bám sát TC14)
     vehicleType: {
@@ -48,7 +48,7 @@ const bookingSchema = new mongoose.Schema({
     // Trạng thái (Mặc định REQUESTED theo TC6)
     status: {
         type: String,
-        enum: ['REQUESTED', 'SEARCHING_DRIVER', 'ACCEPTED', 'CANCELLED', 'FAILED', 'COMPLETED'],
+        enum: ['REQUESTED', 'ASSIGNED', 'SEARCHING_DRIVER', 'ACCEPTED', 'CANCELLED', 'FAILED', 'COMPLETED'],
         default: 'REQUESTED'
     },
 

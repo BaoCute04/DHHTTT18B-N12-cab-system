@@ -30,7 +30,8 @@ class MessageBroker {
                     { value: JSON.stringify(message) }
                 ]
             });
-            console.log(`📤 [Kafka] Đã bắn event [${message.event_type}] tới topic [${topic}]`);
+            const eventName = message.event_type || message.type || 'unknown-event';
+            console.log(`📤 [Kafka] Đã bắn event [${eventName}] tới topic [${topic}]`);
         } catch (error) {
             console.error(`❌ [Kafka] Lỗi publish event:`, error.message);
         }

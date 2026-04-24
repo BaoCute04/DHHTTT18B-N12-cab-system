@@ -105,6 +105,11 @@ export async function upsertDriver(driverId, payload) {
 
 export async function updateDriverStatus(driverId, updates) {
   try {
+    // [NEW LOGIC] Khi chuyển status sang ONLINE mà không truyền availability, mặc định là AVAILABLE
+    if (updates.status === DRIVER_STATUS.ONLINE && updates.availability === undefined) {
+      updates.availability = DRIVER_AVAILABILITY.AVAILABLE;
+    }
+
     const driver = await DriverModel.findOneAndUpdate(
       { driverId },
       { ...updates, updatedAt: new Date() },

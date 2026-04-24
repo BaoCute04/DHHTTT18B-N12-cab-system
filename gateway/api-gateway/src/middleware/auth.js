@@ -4,7 +4,7 @@ import { extractBearerToken } from "../security/jwt-service.js";
 export function createAuthMiddleware({ jwtService }) {
   return async function authMiddleware(request, _response, next) {
     try {
-      if (!request.routeConfig?.isApiRoute) {
+      if (request.method === "OPTIONS" || !request.routeConfig?.isApiRoute) {
         return next();
       }
 

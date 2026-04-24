@@ -1,4 +1,8 @@
+import { useNavigate } from "react-router-dom";
+
 export function CustomerOnboardingPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen bg-slate-100 px-4 flex items-center justify-center">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -16,7 +20,10 @@ export function CustomerOnboardingPage() {
         </div>
 
         <div className="px-6 pb-8">
-          <button className="w-full rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98]">
+          <button
+            className="w-full rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98]"
+            onClick={() => navigate("/customer/auth/login")}
+          >
             Bắt đầu
           </button>
         </div>

@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY services/pricing-service/package.json services/pricing-service/package.json
+COPY platform platform
 COPY services/pricing-service services/pricing-service
 
 RUN npm ci --workspace @cab/pricing-service --include-workspace-root

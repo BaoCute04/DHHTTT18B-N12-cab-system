@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 
 from fastapi import FastAPI
@@ -21,6 +22,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan: startup → yield → shutdown."""
     logger.info("🚀 Matching Service starting up...")
     await connect_db()
+    
+    # [NHIỆM VỤ 1] Start Kafka Consumer in background
+    from app.tasks.consumer import start_matching_consumer
+    asyncio.create_task(start_matching_consumer())
+    
     yield
     logger.info("🛑 Matching Service shutting down...")
     await close_db()
@@ -35,13 +41,5 @@ app = FastAPI(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(health.router, tags=["Health"])
-app.include_router(
-    matching_router,
-    prefix="/api/v1/matching",
-    tags=["AI Matching"],
-)
-app.include_router(
-    feature_router,
-    prefix="/api/v1/matching/features",
-    tags=["Matching Feature Store"],
-)
+# Removed: matching_router
+# Removed: feature_router (following 'Xóa bỏ HTTP API Controller' instruction)

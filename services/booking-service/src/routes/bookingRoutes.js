@@ -12,6 +12,9 @@ router.post('/:bookingId/cancel', bookingController.cancelBooking);
 //xem chi tiết chuyến
 router.get('/:bookingId', bookingController.getBookingById);
 
+//Cập nhật thông tin booking (Status, Driver,...)
+router.patch('/:bookingId', bookingController.updateBooking);
+
 //Lấy danh sách chuyến xe của user
 router.get('/', bookingController.getUserBookings);
 
