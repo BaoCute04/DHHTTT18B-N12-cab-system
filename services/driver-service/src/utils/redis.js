@@ -52,6 +52,7 @@ function getRedisClient() {
  * @param {number} lng
  */
 export async function publishDriverToZone(driverId, lat, lng) {
+  console.log(`[DEBUG] Calling publishDriverToZone for ${driverId} at ${lat}, ${lng}`);
   try {
     const client = getRedisClient();
     const zone = ngeohash.encode(lat, lng, GEOHASH_PRECISION);
@@ -87,5 +88,21 @@ export async function removeDriverFromZone(driverId, lat, lng) {
     console.log(`[driver-service/redis] Supply: Driver ${driverId} đã xóa khỏi zone ${zone}`);
   } catch (err) {
     console.error('[driver-service/redis] removeDriverFromZone thất bại:', err.message);
+  }
+}
+
+/**
+ * [NHIỆM VỤ 1] Lưu tọa độ Driver bằng GEOADD
+ */
+export async function publishDriverToGeo(driverId, lat, lng) {
+  try {
+    if (lat == null || lng == null) return;
+    const client = getRedisClient();
+    const key = 'drivers:geo';
+    // GEOADD key longitude latitude member
+    await client.geoadd(key, lng, lat, driverId);
+    console.log(`[driver-service/redis] GEOADD: Driver ${driverId} -> [${lng}, ${lat}]`);
+  } catch (err) {
+    console.error('[driver-service/redis] GEOADD failed:', err.message);
   }
 }

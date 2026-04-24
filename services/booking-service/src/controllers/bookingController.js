@@ -132,14 +132,17 @@ export const createBooking = async (req, res) => {
 
         await newBooking.save();
 
-        // [TC25] Publish event lên Kafka topic 'ride_events'
-        await messageBroker.publish('ride_events', {
-            event_type: 'ride_requested',
-            ride_id: newBooking.bookingId,
-            user_id: newBooking.userId,
+        // Publish đúng contract kiến trúc để matching/ETA consume ổn định.
+        await messageBroker.publish('ride.created', {
+            eventId: uuidv4(),
+            type: 'RideCreated',
+            rideId: newBooking.bookingId,
+            bookingId: newBooking.bookingId,
+            userId: newBooking.userId,
             pickup: newBooking.pickup,
             drop: newBooking.drop,
-            payment_method: newBooking.paymentMethod,
+            paymentMethod: newBooking.paymentMethod,
+            vehicleType: newBooking.vehicleType,
             timestamp: newBooking.createdAt
         });
 
@@ -207,6 +210,28 @@ export const cancelBooking = async (req, res) => {
         });
 
         res.status(200).json(formatResponse("Booking cancelled", booking, req));
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Cập nhật thông tin booking (Status, Driver,...)
+export const updateBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const updates = req.body;
+
+        const booking = await Booking.findOneAndUpdate(
+            { bookingId },
+            { $set: updates },
+            { new: true }
+        );
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
+
+        res.status(200).json(formatResponse("Booking updated", booking, req));
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

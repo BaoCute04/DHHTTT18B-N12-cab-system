@@ -4,6 +4,7 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 const { Ride, RIDE_STATUS } = require('../models/ride.model');
 const { RideMongoModel } = require('../models/ride.mongo.model');
 const { calculateETA } = require('./eta.service');
@@ -419,6 +420,25 @@ async function completeRide(rideId, driverId) {
     action: 'completed',
     completedAt: ride.completedAt,
   });
+
+  // [BỔ SUNG] Giải phóng tài xế sang AVAILABLE
+  try {
+    const driverServiceUrl = process.env.DRIVER_SERVICE_URL || 'http://driver-service:3107';
+    await axios.patch(`${driverServiceUrl}/api/v1/drivers/${ride.driverId}`, {
+      availability: 'AVAILABLE'
+    });
+    console.log(`🔓 [Ride Service] Driver ${ride.driverId} set back to AVAILABLE`);
+
+    // [BỔ SUNG] Cập nhật Booking sang COMPLETED
+    const bookingServiceUrl = process.env.BOOKING_SERVICE_URL || 'http://booking-service:3103';
+    await axios.patch(`${bookingServiceUrl}/api/v1/bookings/${ride.bookingId}`, {
+      status: 'COMPLETED'
+    });
+    console.log(`✅ [Ride Service] Booking ${ride.bookingId} set to COMPLETED`);
+
+  } catch (error) {
+    console.error(`⚠️ [Ride Service] Failed to sync status to other services: ${error.message}`);
+  }
 
 
   return ride;
