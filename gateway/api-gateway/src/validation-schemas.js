@@ -8,6 +8,7 @@ const coordinatesSchema = z.object({
   lng: z.number().min(-180).max(180),
   address: z.string().min(3).max(250).optional()
 });
+const bookingPaymentMethodSchema = z.enum(["CASH", "CREDIT_CARD", "E_WALLET", "cash", "credit_card", "e_wallet"]);
 const priceSnapshotSchema = z
   .object({
     amount: moneyIntegerSchema,
@@ -80,13 +81,28 @@ export const httpSchemas = {
     .object({
       userId: uuidSchema,
       pickup: coordinatesSchema,
-      drop: coordinatesSchema, // 
+      drop: coordinatesSchema.optional(),
+      destination: coordinatesSchema.optional(),
       vehicleType: z.enum(["bike", "car", "car_plus"]),
-      distanceKm: z.number(),        
-      paymentMethod: z.string(),      
-      priceSnapshot: priceSnapshotSchema
+      distanceKm: z.number().positive().optional(),
+      paymentMethod: bookingPaymentMethodSchema.optional(),
+      quoteId: z.string().min(8).max(128).optional(),
+      priceSnapshot: priceSnapshotSchema.optional()
     })
-    .strict(), 
+    .strict()
+    .superRefine((value, context) => {
+      if (!value.drop && !value.destination) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["destination"],
+          message: "Either destination or drop is required"
+        });
+      }
+    })
+    .transform((value) => ({
+      ...value,
+      drop: value.drop || value.destination
+    })),
   paymentCreate: z
     .object({
       rideId: uuidSchema,
@@ -105,8 +121,8 @@ export const websocketSchemas = {
       payload: z
         .object({
           rideId: uuidSchema,
-          driverId: uuidSchema,
-          rideStatus: z.string().min(1),
+          driverId: uuidSchema.optional(),
+          rideStatus: z.string().min(1).optional(),
           latitude: z.number().min(-90).max(90),
           longitude: z.number().min(-180).max(180),
           recordedAt: isoDateSchema

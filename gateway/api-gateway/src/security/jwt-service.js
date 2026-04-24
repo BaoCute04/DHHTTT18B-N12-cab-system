@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, errors as joseErrors, jwtVerify } from "jose";
+import { createLocalJWKSet, errors as joseErrors, jwtVerify } from "jose";
 import { GatewayError } from "../errors.js";
 
 export function createJwtService({
@@ -8,11 +8,15 @@ export function createJwtService({
   issuer = process.env.JWT_ISSUER || "cab-auth-service",
   audience = process.env.JWT_AUDIENCE || "cab-api",
   fetchImpl = globalThis.fetch,
-  timeoutMs = Number(process.env.AUTH_VALIDATION_TIMEOUT_MS || process.env.UPSTREAM_TIMEOUT_MS || 5000)
+  timeoutMs = Number(process.env.AUTH_VALIDATION_TIMEOUT_MS || process.env.UPSTREAM_TIMEOUT_MS || 5000),
+  jwksCacheTtlMs = Number(process.env.AUTH_JWKS_CACHE_TTL_MS || 60_000)
 } = {}) {
   const resolvedJwksUrl = jwksUrl || buildAuthUrl(authServiceUrl, "/.well-known/jwks.json");
   const resolvedAuthMeUrl = authMeUrl || buildAuthUrl(authServiceUrl, "/api/v1/auth/me");
-  const remoteJwks = createRemoteJWKSet(new URL(resolvedJwksUrl));
+  let jwksCache = {
+    expiresAt: 0,
+    keyResolver: null
+  };
 
   return {
     configured: Boolean(resolvedJwksUrl && resolvedAuthMeUrl),
@@ -31,14 +35,23 @@ export function createJwtService({
 
       let payload;
       try {
-        const verified = await jwtVerify(token, remoteJwks, {
+        const verified = await jwtVerify(token, await getKeyResolver(false), {
           issuer: issuer || undefined,
           audience: audience || undefined,
           algorithms: ["RS256"]
         });
         payload = verified.payload;
       } catch (error) {
-        throw mapJwtVerificationError(error);
+        if (shouldRefreshJwks(error)) {
+          const verified = await jwtVerify(token, await getKeyResolver(true), {
+            issuer: issuer || undefined,
+            audience: audience || undefined,
+            algorithms: ["RS256"]
+          });
+          payload = verified.payload;
+        } else {
+          throw mapJwtVerificationError(error);
+        }
       }
 
       const authContext = await fetchAuthContext({
@@ -56,6 +69,60 @@ export function createJwtService({
       });
     }
   };
+
+  async function getKeyResolver(forceRefresh) {
+    if (!forceRefresh && jwksCache.keyResolver && Date.now() < jwksCache.expiresAt) {
+      return jwksCache.keyResolver;
+    }
+
+    const jwks = await fetchJwks({
+      jwksUrl: resolvedJwksUrl,
+      fetchImpl,
+      timeoutMs
+    });
+    jwksCache = {
+      keyResolver: createLocalJWKSet(jwks),
+      expiresAt: Date.now() + jwksCacheTtlMs
+    };
+
+    return jwksCache.keyResolver;
+  }
+}
+
+async function fetchJwks({ jwksUrl, fetchImpl, timeoutMs }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchImpl(jwksUrl, {
+      method: "GET",
+      signal: controller.signal
+    });
+    const body = await readJsonResponse(response);
+
+    if (!response.ok || !body?.keys) {
+      throw new GatewayError(503, "AUTH_JWKS_UNAVAILABLE", "Auth JWKS is unavailable for token validation");
+    }
+
+    return body;
+  } catch (error) {
+    if (error instanceof GatewayError) {
+      throw error;
+    }
+
+    throw new GatewayError(503, "AUTH_JWKS_UNAVAILABLE", "Auth JWKS is unavailable for token validation", {
+      cause: error
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function shouldRefreshJwks(error) {
+  return (
+    error instanceof joseErrors.JOSEError &&
+    ["ERR_JWKS_NO_MATCHING_KEY", "ERR_JOSE_NOT_SUPPORTED"].includes(error.code)
+  );
 }
 
 async function fetchAuthContext({ token, authMeUrl, fetchImpl, timeoutMs, context }) {

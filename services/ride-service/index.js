@@ -5,15 +5,13 @@
 
 require('dotenv').config();
 
-const http = require('http');
+const { startServiceServers } = require('../../platform/node/start-servers.cjs');
 const { createApp } = require('./src/app');
 const { connectMongo } = require('./src/database/mongoose');
 
 // Create Express app
 const app = createApp();
-
-// Create HTTP server
-const server = http.createServer(app);
+let runtime = null;
 
 async function startServer() {
   try {
@@ -30,17 +28,39 @@ async function startServer() {
     console.warn('[Kafka] Connection skipped or failed:', error.message);
   }
 
-  const port = process.env.PORT || 3109;
-
-  server.listen(port, () => {
-    console.log(`\n🚖 Ride Service Started`);
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    console.log(`Port: ${port}`);
-    console.log(`REST API: http://localhost:${port}/api/v1/rides`);
-    console.log(`Health: http://localhost:${port}/health`);
-    console.log(`Realtime events: Kafka -> notification-service`);
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  const port = Number(process.env.PORT || 3109);
+  runtime = await startServiceServers({
+    app,
+    env: process.env,
+    publicPort: port,
+    serviceName: 'ride-service',
+    logger: console,
   });
+
+  console.log(`\n🚖 Ride Service Started`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`Port: ${port}`);
+  console.log(`REST API: http://localhost:${port}/api/v1/rides`);
+  console.log(`Health: http://localhost:${port}/health`);
+  if (runtime.internalPort) {
+    console.log(`Internal mTLS: https://ride-service:${runtime.internalPort}`);
+  }
+  console.log(`Realtime events: Kafka -> notification-service`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 }
 
-startServer();
+async function shutdown(signal) {
+  console.log(`[ride-service] received ${signal}, shutting down...`);
+  if (runtime) {
+    await runtime.close();
+  }
+  process.exit(0);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+startServer().catch((error) => {
+  console.error('[ride-service] startup failed', error);
+  process.exit(1);
+});

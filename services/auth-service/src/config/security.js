@@ -23,6 +23,7 @@ function buildSecurityConfig(env) {
             window: env.adminMfa.window,
             recoveryCodesCount: env.adminMfa.recoveryCodesCount,
             challengeTtlSeconds: env.adminMfa.challengeTtlSeconds,
+            encryptionKey: env.adminMfa.encryptionKey,
         },
         adminAuth: {
             maxFailedAttempts: env.adminAuth.maxFailedAttempts,

@@ -124,6 +124,7 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
       path: "/api/v1/bookings",
       allowedRoles: ["Customer", "Admin"],
       rateLimit: createRatePolicy("booking-create", 10, 10_000, "user-or-ip"),
+      quota: createQuotaPolicy("booking-create-daily", 100, 24 * 60 * 60_000, "user-or-ip"),
       validationSchema: httpSchemas.bookingCreate,
       idempotency: {
         required: true,
@@ -131,11 +132,44 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
       }
     },
     {
+      key: "user-list",
+      method: "GET",
+      path: "/api/v1/users",
+      allowedRoles: ["Admin"],
+      requiredScopes: ["admin:all"],
+      rateLimit: createRatePolicy("user-list", 60, 60_000, "user-or-ip")
+    },
+    {
+      key: "ride-create",
+      method: "POST",
+      path: "/api/v1/rides",
+      allowedRoles: ["Customer", "Admin"],
+      rateLimit: createRatePolicy("ride-create", 10, 10_000, "user-or-ip"),
+      quota: createQuotaPolicy("ride-create-daily", 120, 24 * 60 * 60_000, "user-or-ip")
+    },
+    {
+      key: "ride-stats",
+      method: "GET",
+      path: "/api/v1/rides/stats",
+      allowedRoles: ["Admin"],
+      requiredScopes: ["admin:all"],
+      rateLimit: createRatePolicy("ride-stats", 30, 60_000, "user-or-ip")
+    },
+    {
+      key: "ride-location-update",
+      method: "POST",
+      pathRegex: /^\/api\/v1\/rides\/[^/]+\/location$/,
+      allowedRoles: ["Driver", "Admin"],
+      requiredPermissions: ["location:update:assigned"],
+      rateLimit: createRatePolicy("ride-location-update", 30, 10_000, "user-or-ip")
+    },
+    {
       key: "payment-create",
       method: "POST",
       path: "/api/v1/payments",
       allowedRoles: ["Customer", "Admin"],
       rateLimit: createRatePolicy("payment-create", 10, 10_000, "user-or-ip"),
+      quota: createQuotaPolicy("payment-create-daily", 60, 24 * 60 * 60_000, "user-or-ip"),
       validationSchema: httpSchemas.paymentCreate,
       idempotency: {
         required: true,
@@ -148,7 +182,7 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
     resolve(request) {
       const pathname = extractPathname(request.originalUrl || request.url || "/");
       const family = families.find((item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`));
-      const policy = policies.find((item) => item.method === request.method && item.path === pathname);
+      const policy = findMatchingPolicy(policies, request.method, pathname);
       const isApiRoute = pathname.startsWith("/api/v1/");
 
       return {
@@ -159,7 +193,10 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
         upstreamUrl: family?.upstreamUrl || null,
         authRequired: policy?.authRequired ?? family?.authRequired ?? false,
         allowedRoles: policy?.allowedRoles ?? family?.allowedRoles ?? [],
+        requiredScopes: policy?.requiredScopes ?? [],
+        requiredPermissions: policy?.requiredPermissions ?? [],
         rateLimit: policy?.rateLimit ?? (pathname.startsWith("/api/v1/auth/") ? authRatePolicy : null),
+        quota: policy?.quota ?? null,
         validationSchema: policy?.validationSchema ?? null,
         idempotency: policy?.idempotency ?? null,
         timeoutMs: family?.timeoutMs || upstreamTimeoutMs
@@ -177,8 +214,35 @@ function createRatePolicy(name, limit, windowMs, identity) {
   };
 }
 
+function createQuotaPolicy(name, limit, windowMs, identity) {
+  return {
+    name,
+    limit,
+    windowMs,
+    identity
+  };
+}
+
 function extractPathname(urlLike) {
   return new URL(urlLike, "http://gateway.local").pathname;
+}
+
+function findMatchingPolicy(policies, method, pathname) {
+  return policies.find((item) => {
+    if (item.method !== method) {
+      return false;
+    }
+
+    if (item.path) {
+      return item.path === pathname;
+    }
+
+    if (item.pathRegex) {
+      return item.pathRegex.test(pathname);
+    }
+
+    return false;
+  });
 }
 
 function buildTargetEnvName(serviceName) {

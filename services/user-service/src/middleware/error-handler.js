@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { ApiError } from "../lib/api-error.js";
+import { recordAuditEvent } from "../lib/audit-log.js";
 import { sendError } from "../lib/response.js";
 
 export function notFoundHandler(request, response) {
@@ -7,6 +8,15 @@ export function notFoundHandler(request, response) {
 }
 
 export function errorHandler(error, request, response, _next) {
+  if (request.auditEvent && !request.auditLogged) {
+    recordAuditEvent(request, {
+      ...request.auditEvent,
+      outcome: "failure",
+      error
+    });
+    request.auditLogged = true;
+  }
+
   if (error instanceof ZodError) {
     return sendError(response, request, 400, "Validation failed", {
       issues: error.issues.map((issue) => ({

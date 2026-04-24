@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { GatewayError } from "../errors.js";
+import { applyForwardedAuthHeaders, isForwardedAuthHeader } from "../security/internal-auth-headers.js";
 import { createCircuitBreaker } from "./circuit-breaker.js";
 
 export function createProxyClient({
@@ -99,7 +100,7 @@ async function executeRequest({
     }
 
     const normalizedKey = key.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(normalizedKey)) {
+    if (HOP_BY_HOP_HEADERS.has(normalizedKey) || isForwardedAuthHeader(normalizedKey)) {
       continue;
     }
 
@@ -110,6 +111,7 @@ async function executeRequest({
   headers.set("x-correlation-id", context.correlationId);
   headers.set("x-gateway-service", gatewayKey);
   headers.set("x-upstream-service", routeConfig.serviceKey);
+  applyForwardedAuthHeaders(headers, request.auth);
 
   const canHaveBody = !["GET", "HEAD"].includes(request.method);
   let body;

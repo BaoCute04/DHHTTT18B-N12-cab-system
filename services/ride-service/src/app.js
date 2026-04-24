@@ -6,6 +6,7 @@
 const express = require('express');
 const rideRoutes = require('./routes/ride.routes');
 const rideController = require('./controllers/ride.controller');
+const { authContextMiddleware } = require('./middleware/auth-context');
 
 /**
  * Create and configure Express app
@@ -20,6 +21,7 @@ function createApp() {
 
   // Parse URL-encoded bodies
   app.use(express.urlencoded({ extended: true }));
+  app.use(authContextMiddleware);
 
   // Request logging middleware
   app.use((req, res, next) => {

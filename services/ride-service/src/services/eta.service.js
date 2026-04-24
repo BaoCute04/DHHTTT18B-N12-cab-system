@@ -5,9 +5,12 @@
 
 'use strict';
 
+const { createMtlsFetch } = require('../../../../platform/node/mtls-client.cjs');
+
 const ETA_SERVICE_URL = (process.env.ETA_SERVICE_URL || 'http://eta-service:3110').replace(/\/$/, '');
 const ETA_TIMEOUT_MS = Math.max(Number(process.env.ETA_SERVICE_TIMEOUT_MS || 2500), 500);
 const AVG_DRIVER_SPEED_KMH = Math.max(Number(process.env.AVG_DRIVER_SPEED || 30), 1);
+const etaFetch = createMtlsFetch({ env: process.env, prefix: 'INTERNAL_TLS' });
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const earthRadiusKm = 6371;
@@ -47,7 +50,7 @@ async function postEta(pathname, payload) {
   const timeout = setTimeout(() => controller.abort(), ETA_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${ETA_SERVICE_URL}${pathname}`, {
+    const response = await etaFetch(`${ETA_SERVICE_URL}${pathname}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

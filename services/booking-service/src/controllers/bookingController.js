@@ -13,6 +13,41 @@ const formatResponse = (message, data, req) => ({
     }
 });
 
+const VALID_PAYMENT_METHODS = ['CASH', 'CREDIT_CARD', 'E_WALLET'];
+
+function normalizePaymentMethod(value) {
+    if (!value) {
+        return 'CASH';
+    }
+
+    const normalized = String(value).trim().toUpperCase();
+    if (normalized === 'CASH' || normalized === 'CREDIT_CARD' || normalized === 'E_WALLET') {
+        return normalized;
+    }
+
+    return normalized;
+}
+
+function resolveDropLocation(payload) {
+    return payload.drop || payload.destination || null;
+}
+
+function calculateDistanceKm(origin, destination) {
+    const toRadians = (value) => (value * Math.PI) / 180;
+    const earthRadiusKm = 6371;
+    const dLat = toRadians(destination.lat - origin.lat);
+    const dLng = toRadians(destination.lng - origin.lng);
+    const originLat = toRadians(origin.lat);
+    const destinationLat = toRadians(destination.lat);
+
+    const haversine =
+        Math.sin(dLat / 2) ** 2 +
+        Math.sin(dLng / 2) ** 2 * Math.cos(originLat) * Math.cos(destinationLat);
+
+    const distance = 2 * earthRadiusKm * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    return Number(distance.toFixed(3));
+}
+
 // [TC3, TC6, TC11, TC12, TC14, TC19, TC25] Tạo mới chuyến xe
 export const createBooking = async (req, res) => {
     try {
@@ -29,7 +64,8 @@ export const createBooking = async (req, res) => {
             return res.status(200).json(formatResponse("Booking already exists", existingBooking, req));
         }
 
-        const { userId, pickup, drop, distanceKm, vehicleType, paymentMethod, quoteId } = req.body;
+        const { userId, pickup, distanceKm, vehicleType, paymentMethod, quoteId } = req.body;
+        const drop = resolveDropLocation(req.body);
 
         // [TC11] Validation: Thiếu trường bắt buộc
         if (!pickup || pickup.lat === undefined || pickup.lng === undefined) {
@@ -46,10 +82,15 @@ export const createBooking = async (req, res) => {
         }
 
         // [TC14] Validation: Phương thức thanh toán
-        const validPaymentMethods = ['CASH', 'CREDIT_CARD', 'E_WALLET'];
-        if (paymentMethod && !validPaymentMethods.includes(paymentMethod)) {
+        const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
+        if (paymentMethod && !VALID_PAYMENT_METHODS.includes(normalizedPaymentMethod)) {
             return res.status(400).json({ success: false, message: 'Invalid payment method' });
         }
+
+        const normalizedDistanceKm =
+            typeof distanceKm === 'number' && Number.isFinite(distanceKm)
+                ? distanceKm
+                : calculateDistanceKm(pickup, drop);
 
         // [Tiêu chí 5] Validate quote_id — đảm bảo giá estimate ↔ booking nhất quán
         let lockedPrice = null;
@@ -75,9 +116,9 @@ export const createBooking = async (req, res) => {
             userId: userId || 'USR-TEMP',
             pickup,
             drop,
-            distanceKm,
+            distanceKm: normalizedDistanceKm,
             vehicleType: vehicleType || 'bike',
-            paymentMethod: paymentMethod || 'CASH',
+            paymentMethod: normalizedPaymentMethod,
             idempotencyKey,
             quoteId: quoteId || null,
             lockedPrice,

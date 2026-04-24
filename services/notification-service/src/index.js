@@ -1,19 +1,29 @@
 import { createNotificationApp } from "./app.js";
 import { loadNotificationEnv } from "./load-env.js";
 import { startRealtimeRelay } from "./realtime-relay.js";
+import mtlsClient from "../../../platform/node/mtls-client.cjs";
+import startServersModule from "../../../platform/node/start-servers.cjs";
 
 loadNotificationEnv();
+const { createMtlsFetch } = mtlsClient;
+const { startServiceServers } = startServersModule;
+const internalFetch = createMtlsFetch({ env: process.env, prefix: "INTERNAL_TLS" });
 
 const runtime = await createNotificationApp({
   logger: console
 });
 
 const port = Number.parseInt(process.env.PORT || "3108", 10);
-const server = runtime.app.listen(port, () => {
-  console.log(`[notification-service] listening on port ${port}`);
+const serverRuntime = await startServiceServers({
+  app: runtime.app,
+  env: process.env,
+  publicPort: port,
+  serviceName: "notification-service",
+  logger: console
 });
 
 let realtimeRelay = await startRealtimeRelay({
+  fetchImpl: internalFetch,
   logger: console
 }).catch((error) => {
   console.error("[notification-service] failed to start realtime relay", error);
@@ -28,7 +38,7 @@ async function shutdown(signal) {
   }
 
   await runtime.close();
-  await new Promise((resolve) => server.close(resolve));
+  await serverRuntime.close();
   process.exit(0);
 }
 

@@ -266,6 +266,15 @@ async function updateRideLocation(rideId, driverId, location) {
     throw new Error('Invalid location: must include lat and lng');
   }
 
+  const allowedStatuses = new Set([
+    RIDE_STATUS.DRIVER_ASSIGNED,
+    RIDE_STATUS.DRIVER_ARRIVING,
+    RIDE_STATUS.IN_PROGRESS
+  ]);
+  if (!allowedStatuses.has(ride.status)) {
+    throw new Error(`Driver can update GPS only when ride is active, arriving, or in progress (current: ${ride.status})`);
+  }
+
   const previousStatus = ride.status;
 
   if (usesMongo()) {
