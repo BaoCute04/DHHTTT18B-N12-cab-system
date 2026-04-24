@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDriverRide } from "@app/DriverRideProvider.jsx";
+import { rideApi } from "@/services/rideApi.js";
 import { request } from "@/services/httpClient.js";
 
 export function StartRidePage() {
@@ -13,24 +14,20 @@ export function StartRidePage() {
 
     setLoading(true);
     try {
-      const response = await request(`/api/v1/rides/${currentRide.rideId}/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-           driverId: currentRide.driverId
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        setCurrentRide(result.data);
+      const rideId = currentRide.rideId || currentRide.id;
+      const driverId = currentRide.driverId || "driver-123";
+      
+      const result = await rideApi.startRide(rideId, driverId);
+      
+      if (result.success || result.data) {
+        setCurrentRide(result.data || result);
         navigate("/driver/ride/in-progress");
       } else {
         alert(result.message || "Failed to start ride");
       }
     } catch (error) {
       console.error("Start ride error:", error);
-      alert("Đã có lỗi xảy ra.");
+      alert(error.message || "Đã có lỗi xảy ra.");
     } finally {
       setLoading(false);
     }
@@ -75,7 +72,7 @@ export function StartRidePage() {
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Thu nhập</span>
-              <span>{currentRide?.estimatedPrice?.toLocaleString() || "45.000"}đ</span>
+              <span>{(currentRide?.priceSnapshot || currentRide?.estimatedPrice || 45000).toLocaleString()}đ</span>
             </div>
           </div>
 

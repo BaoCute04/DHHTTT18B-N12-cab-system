@@ -166,7 +166,8 @@ async function getRidesByDriverId(driverId) {
       driverId,
       status: {
         $in: [
-          RIDE_STATUS.DRIVER_ASSIGNED,
+          RIDE_STATUS.WAITING_FOR_ACCEPTANCE,
+          RIDE_STATUS.ACCEPTED,
           RIDE_STATUS.DRIVER_ARRIVING,
           RIDE_STATUS.IN_PROGRESS,
         ],
@@ -178,10 +179,28 @@ async function getRidesByDriverId(driverId) {
     (ride) =>
       ride.driverId === driverId &&
       [
-        RIDE_STATUS.DRIVER_ASSIGNED,
+        RIDE_STATUS.WAITING_FOR_ACCEPTANCE,
+        RIDE_STATUS.ACCEPTED,
         RIDE_STATUS.DRIVER_ARRIVING,
         RIDE_STATUS.IN_PROGRESS,
       ].includes(ride.status)
+  );
+}
+
+async function getHistoryByDriverId(driverId) {
+  if (usesMongo()) {
+    return RideMongoModel.find({
+      driverId,
+      status: {
+        $in: [RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED],
+      },
+    }).sort({ updatedAt: -1 });
+  }
+
+  return Array.from(rides.values()).filter(
+    (ride) =>
+      ride.driverId === driverId &&
+      [RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED].includes(ride.status)
   );
 }
 
@@ -600,6 +619,7 @@ module.exports = {
   startRide,
   completeRide,
   cancelRide,
+  getHistoryByDriverId,
   getRideStatistics,
   clearAllRides,
 };

@@ -1,8 +1,9 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { RealtimeContext } from "@app/RealtimeProvider.jsx";
 import { AuthContext } from "@app/AuthProvider.jsx";
 import { useDriverRide } from "@app/DriverRideProvider.jsx";
+import { driverApi } from "@/services/driverApi.js";
 
 export function DriverOnlineOfflineDashboardPage() {
   const navigate = useNavigate();
@@ -10,14 +11,43 @@ export function DriverOnlineOfflineDashboardPage() {
   const { session } = useContext(AuthContext);
   const { onlineStatus, setOnlineStatus, setCurrentRide } = useDriverRide();
 
-  const toggleOnline = () => {
+  const [driverInfo, setDriverInfo] = useState(null);
+
+  const toggleOnline = async () => {
+    const driverId = session?.user?.id || session?.id || "driver-123";
+    
     if (onlineStatus === "ONLINE") {
-      disconnect();
-      setOnlineStatus("OFFLINE");
+      try {
+        await driverApi.goOffline(driverId);
+        disconnect();
+        setOnlineStatus("OFFLINE");
+      } catch (error) {
+        alert("Lỗi khi tắt trực tuyến");
+      }
     } else {
-      setOnlineStatus("ONLINE");
+      try {
+        await driverApi.goOnline(driverId);
+        setOnlineStatus("ONLINE");
+      } catch (error) {
+        alert("Lỗi khi bật trực tuyến");
+      }
     }
   };
+
+  useEffect(() => {
+    const driverId = session?.user?.id || session?.id || "driver-123";
+    
+    const fetchDriver = async () => {
+      try {
+        const result = await driverApi.getDriver(driverId);
+        setDriverInfo(result.data || result);
+      } catch (e) {
+        console.error("Fetch driver error:", e);
+      }
+    };
+
+    fetchDriver();
+  }, [session]);
 
   useEffect(() => {
     if (onlineStatus === "ONLINE" && status !== "open" && status !== "connecting") {
@@ -27,7 +57,7 @@ export function DriverOnlineOfflineDashboardPage() {
         onMessage: (data) => {
           try {
             const message = JSON.parse(data);
-            if (message.type === "ride.assigned" || message.type === "DriverAssigned") {
+            if (message.type === "ride.assigned" || message.type === "DriverAssigned" || message.type === "ride_requested" || message.type === "ride_assigned") {
               setCurrentRide(message.payload || message);
               navigate("/driver/ride/incoming-request");
             }
@@ -76,12 +106,12 @@ export function DriverOnlineOfflineDashboardPage() {
         <div className="px-6 grid grid-cols-2 gap-4 mb-6">
           <div className="rounded-2xl bg-slate-50 p-4 text-center">
             <p className="text-xs text-slate-500 mb-1">Thu nhập hôm nay</p>
-            <p className="text-lg font-semibold text-slate-900">0đ</p>
+            <p className="text-lg font-semibold text-slate-900">{driverInfo?.todayEarnings?.toLocaleString() || "0"}đ</p>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4 text-center">
             <p className="text-xs text-slate-500 mb-1">Số chuyến</p>
-            <p className="text-lg font-semibold text-slate-900">0</p>
+            <p className="text-lg font-semibold text-slate-900">{driverInfo?.totalTrips || "0"}</p>
           </div>
         </div>
 

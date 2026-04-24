@@ -1,4 +1,51 @@
+import { useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth.js";
+import { rideApi } from "@/services/rideApi.js";
+
 export function DriverCancelRidePage() {
+  const { session } = useAuth();
+  const driverId = session?.subject_id || session?.id || session?.driverId;
+  const navigate = useNavigate();
+  const { state } = useLocation();
+  const { rideId } = useParams();
+  
+  const ride = state?.ride || {};
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [reason, setReason] = useState("");
+
+  const handleKeep = () => {
+    // Go back to the previous screen (e.g. In progress)
+    navigate(-1);
+  };
+
+  const handleCancel = async () => {
+    if (!rideId || !driverId) return;
+    if (!reason) {
+      setError("Vui lòng chọn lý do hủy chuyển.");
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await rideApi.cancelRide(rideId, reason);
+      navigate("/driver/availability/dashboard", { replace: true });
+    } catch (err) {
+      setError(err.message || "Không thể hủy chuyến");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reasonsList = [
+    "Khách không xuất hiện",
+    "Không liên lạc được với khách",
+    "Sự cố phương tiện",
+    "Lý do khác"
+  ];
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -32,33 +79,34 @@ export function DriverCancelRidePage() {
           <div className="rounded-2xl border p-4 mb-4 space-y-3">
             <p className="text-sm font-medium mb-2">Lý do huỷ chuyến</p>
 
-            <label className="flex items-center gap-3 text-sm">
-              <input type="radio" />
-              Khách không xuất hiện
-            </label>
-
-            <label className="flex items-center gap-3 text-sm">
-              <input type="radio" />
-              Không liên lạc được với khách
-            </label>
-
-            <label className="flex items-center gap-3 text-sm">
-              <input type="radio" />
-              Sự cố phương tiện
-            </label>
-
-            <label className="flex items-center gap-3 text-sm">
-              <input type="radio" />
-              Lý do khác
-            </label>
+            {reasonsList.map(r => (
+              <label key={r} className="flex items-center gap-3 text-sm cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="cancel_reason" 
+                  value={r}
+                  checked={reason === r}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+                {r}
+              </label>
+            ))}
           </div>
+          
+          {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
           <div className="flex gap-3 mb-4">
-            <button className="flex-1 rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]">
+            <button 
+              onClick={handleKeep}
+              disabled={loading}
+              className="flex-1 rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]">
               Giữ chuyến
             </button>
-            <button className="flex-1 rounded-xl border border-red-500 py-3 text-sm font-medium text-red-600 active:scale-[0.98]">
-              Xác nhận huỷ
+            <button 
+              onClick={handleCancel}
+              disabled={loading}
+              className="flex-1 rounded-xl border border-red-500 py-3 text-sm font-medium text-red-600 active:scale-[0.98]">
+              {loading ? "Đang xử lý..." : "Xác nhận huỷ"}
             </button>
           </div>
 

@@ -1,13 +1,34 @@
 import { useNavigate } from "react-router-dom";
 import { useDriverRide } from "@app/DriverRideProvider.jsx";
+import { rideApi } from "@/services/rideApi.js";
+import { useState } from "react";
 
 export function DriverIncomingRideRequestPage() {
   const navigate = useNavigate();
-  const { currentRide } = useDriverRide();
+  const { currentRide, setCurrentRide } = useDriverRide();
+  const [loading, setLoading] = useState(false);
 
-  const handleAccept = () => {
-    // In auto-assign flow, we just acknowledge and start moving to pickup
-    navigate("/driver/ride/navigate-pickup");
+  const handleAccept = async () => {
+    if (!currentRide) return;
+    
+    setLoading(true);
+    try {
+      const rideId = currentRide.rideId || currentRide.id;
+      
+      const result = await rideApi.acceptRide(rideId);
+      
+      if (result.success || result.data) {
+        setCurrentRide(result.data || result);
+        navigate("/driver/ride/navigate-pickup");
+      } else {
+        alert(result.message || "Failed to accept ride");
+      }
+    } catch (error) {
+      console.error("Accept ride error:", error);
+      alert(error.message || "Không có quyền nhận chuyến đi này (403 Forbidden)");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDecline = () => {
@@ -60,7 +81,9 @@ export function DriverIncomingRideRequestPage() {
           <div className="flex justify-between items-center py-3 border-t border-b">
             <div>
               <p className="text-xs text-slate-500">Giá chuyến đi</p>
-              <p className="text-lg font-bold text-slate-900">{currentRide.estimatedPrice?.toLocaleString() || "45.000"}đ</p>
+              <p className="text-lg font-bold text-slate-900">
+                {(currentRide.priceSnapshot || currentRide.estimatedPrice || 45000).toLocaleString()}đ
+              </p>
             </div>
             <div className="text-right">
               <p className="text-xs text-slate-500">Loại xe</p>
@@ -77,9 +100,13 @@ export function DriverIncomingRideRequestPage() {
             Từ chối
           </button>
           <button
-            className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white font-semibold shadow-lg active:scale-95 transition-transform"
+            className={`flex-[2] py-4 rounded-2xl bg-slate-900 text-white font-semibold shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 ${
+              loading ? "opacity-70 pointer-events-none" : ""
+            }`}
             onClick={handleAccept}
+            disabled={loading}
           >
+            {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             Chấp nhận
           </button>
         </div>

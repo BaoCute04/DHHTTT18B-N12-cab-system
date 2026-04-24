@@ -1,6 +1,7 @@
 import { useState, useContext, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "@app/AuthProvider.jsx";
+import { authApi } from "@/services/authApi.js";
 import { request } from "@/services/httpClient.js";
 
 export function DriverVerifyOtpPage() {
@@ -37,22 +38,15 @@ export function DriverVerifyOtpPage() {
 
     setLoading(true);
     try {
-      const response = await request("/api/v1/auth/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: "driver",
-          destination: phone,
-          code: code
-        })
-      });
-
-      const result = await response.json();
-      if (result.success || result.authStatus === "verified") {
+      const result = await authApi.verifyOtp(phone, code);
+      
+      if (result.success || result.data || result.authStatus === "verified") {
+        const sessionData = result.data || result;
         setSession({
-          accessToken: result.accessToken || result.tokens?.accessToken,
+          accessToken: sessionData.accessToken || sessionData.tokens?.accessToken,
           role: "driver",
-          user: result.account || result.user
+          user: sessionData.account || sessionData.user,
+          ...sessionData
         });
         localStorage.removeItem("temp_driver_login_phone");
         navigate("/driver/availability/dashboard");
@@ -61,7 +55,7 @@ export function DriverVerifyOtpPage() {
       }
     } catch (error) {
       console.error("OTP Verify Error:", error);
-      alert("Lỗi xác thực (Kiểm tra Gateway)");
+      alert(error.message || "Lỗi xác thực");
     } finally {
       setLoading(false);
     }
