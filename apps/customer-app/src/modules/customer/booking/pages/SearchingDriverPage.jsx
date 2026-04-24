@@ -23,10 +23,10 @@ export function SearchingDriverPage() {
         try {
           const message = JSON.parse(data);
           if (message.type === "ride.assigned" || message.type === "ride.status.changed") {
-             if (message.payload?.bookingId === booking.bookingId || message.payload?.rideId === booking.bookingId) {
-               setRide(message.payload);
-               navigate("/customer/ride/driver-assigned");
-             }
+            if (message.payload?.bookingId === booking.bookingId || message.payload?.rideId === booking.bookingId) {
+              setRide(message.payload);
+              navigate("/customer/ride/driver-assigned");
+            }
           }
         } catch (e) {
           console.error("WS Message Error:", e);
@@ -72,7 +72,7 @@ export function SearchingDriverPage() {
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span>Khoảng cách</span>
-              <span>Đang tính...</span>
+              <span>{selectedRideOption?.distance?.toFixed(1) || "..."} km</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Giá dự kiến</span>
@@ -81,8 +81,8 @@ export function SearchingDriverPage() {
           </div>
 
           <button
-             className="w-full rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]"
-             onClick={() => navigate("/customer/booking/pickup")}
+            className="w-full rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]"
+            onClick={() => navigate("/customer/booking/pickup")}
           >
             Huỷ chuyến
           </button>

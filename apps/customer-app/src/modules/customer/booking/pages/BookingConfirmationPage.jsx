@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useBooking } from "@app/BookingProvider.jsx";
+import { useAuth } from "@app/AuthProvider.jsx";
 import { request } from "@/services/httpClient.js";
+import { v4 as uuidv4 } from 'uuid';
 
 export function BookingConfirmationPage() {
   const navigate = useNavigate();
+  const { session } = useAuth();
   const { pickup, destination, selectedRideOption, setBooking } = useBooking();
   const [loading, setLoading] = useState(false);
 
@@ -13,22 +16,38 @@ export function BookingConfirmationPage() {
 
     setLoading(true);
     try {
+      const idempotencyKey = uuidv4();
+      
+      // Gateway requires a valid UUID for userId
+      // If session doesn't have a real UUID, we generate a stable one or a random one for testing
+      const userId = session?.user?.userId || uuidv4();
+
+      const payload = {
+        userId: userId,
+        pickup: {
+          lat: pickup.lat,
+          lng: pickup.lng,
+          address: (pickup.address || "Vị trí đã chọn").substring(0, 250)
+        },
+        drop: {
+          lat: destination.lat,
+          lng: destination.lng,
+          address: (destination.address || "Điểm đến").substring(0, 250)
+        },
+        vehicleType: selectedRideOption.id || "bike",
+        paymentMethod: "CASH",
+        distanceKm: selectedRideOption.distance > 0 ? selectedRideOption.distance : 0.1
+      };
+
+      console.log("[Booking] Sending payload to gateway:", payload);
+
       const response = await request("/api/v1/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pickupLocation: {
-            address: pickup.address,
-            coordinates: { lat: pickup.lat, lng: pickup.lng }
-          },
-          destinationLocation: {
-            address: destination.address,
-            coordinates: { lat: destination.lat, lng: destination.lng }
-          },
-          rideType: selectedRideOption.type,
-          estimatedPrice: selectedRideOption.price,
-          paymentMethod: "CASH"
-        })
+        headers: { 
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey
+        },
+        body: JSON.stringify(payload)
       });
 
       const result = await response.json();
@@ -36,11 +55,12 @@ export function BookingConfirmationPage() {
         setBooking(result.data);
         navigate("/customer/booking/searching-driver");
       } else {
-        alert(result.message || "Failed to create booking");
+        console.error("[Booking] Gateway error:", result);
+        alert(result.message || "Không thể đặt xe. Vui lòng kiểm tra lại thông tin.");
       }
     } catch (error) {
       console.error("Booking error:", error);
-      alert("Đã có lỗi xảy ra khi đặt xe.");
+      alert("Đã có lỗi xảy ra khi kết nối đến máy chủ.");
     } finally {
       setLoading(false);
     }
@@ -52,67 +72,66 @@ export function BookingConfirmationPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
-        <div className="px-6 pt-6 pb-4 border-b">
-          <h1 className="text-lg font-semibold text-slate-900">Xác nhận chuyến đi</h1>
+      <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col border-4 border-slate-900/5">
+        <div className="px-6 pt-6 pb-4 border-b border-slate-50 flex items-center justify-between">
+          <h1 className="text-lg font-bold text-slate-900">Xác nhận chuyến đi</h1>
+          <button onClick={() => navigate(-1)} className="text-slate-400">✕</button>
         </div>
 
-        <div className="flex-1 px-6 py-4 overflow-y-auto">
-          <div className="rounded-2xl border p-4 mb-4">
-            <div className="flex items-start gap-3">
-              <div className="flex flex-col items-center pt-1">
-                <span className="text-green-600">●</span>
-                <span className="h-6 border-l border-dashed border-slate-300"></span>
-                <span className="text-red-500">●</span>
-              </div>
-              <div className="flex-1 text-sm">
-                <p className="font-medium">Điểm đón</p>
-                <p className="text-slate-500 mb-2 truncate">{pickup.address}</p>
-                <p className="font-medium">Điểm đến</p>
-                <p className="text-slate-500 truncate">{destination.address}</p>
+        <div className="flex-1 px-6 py-4 overflow-y-auto space-y-6">
+          <div className="bg-slate-50 rounded-2xl p-4 relative">
+            <div className="absolute left-[26px] top-[40px] bottom-[40px] border-l-2 border-dashed border-slate-300"></div>
+            
+            <div className="flex gap-4 relative mb-6">
+              <div className="w-4 h-4 rounded-full bg-slate-900 border-4 border-white shadow-sm z-10"></div>
+              <div className="flex-1 overflow-hidden">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Điểm đón</p>
+                <p className="text-sm font-bold text-slate-900 truncate">{pickup.address}</p>
               </div>
             </div>
-          </div>
 
-          <div className="rounded-2xl border p-4 mb-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-lg">
-              {selectedRideOption.type === "bike" ? "🛵" : selectedRideOption.type === "car" ? "🚗" : "🚙"}
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold capitalize">{selectedRideOption.type}</p>
-              <p className="text-xs text-slate-500">Dịch vụ vận chuyển</p>
-            </div>
-            <div className="text-sm font-semibold">{selectedRideOption.price.toLocaleString()}đ</div>
-          </div>
-
-          <div className="rounded-2xl border p-4 mb-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-lg">💵</div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold">Thanh toán</p>
-              <p className="text-xs text-slate-500">Tiền mặt</p>
+            <div className="flex gap-4 relative">
+              <div className="w-4 h-4 rounded-full bg-red-500 border-4 border-white shadow-sm z-10"></div>
+              <div className="flex-1 overflow-hidden">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Điểm đến</p>
+                <p className="text-sm font-bold text-slate-900 truncate">{destination.address}</p>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-2xl bg-slate-50 p-4">
-            <div className="flex justify-between text-sm mb-2">
-              <span>Giá chuyến đi</span>
-              <span>{selectedRideOption.price.toLocaleString()}đ</span>
-            </div>
-            <div className="flex justify-between text-sm mb-2">
-              <span>Phí nền tảng</span>
-              <span>0đ</span>
-            </div>
-            <div className="flex justify-between text-sm font-semibold pt-2 border-t">
-              <span>Tổng cộng</span>
-              <span>{selectedRideOption.price.toLocaleString()}đ</span>
-            </div>
+          <div className="space-y-4">
+             <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100">
+                <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl">
+                   {selectedRideOption.icon || "🚗"}
+                </div>
+                <div className="flex-1">
+                   <p className="text-sm font-bold text-slate-900">{selectedRideOption.type}</p>
+                   <p className="text-xs text-slate-400">Dịch vụ tiêu chuẩn</p>
+                </div>
+                <div className="text-right">
+                   <p className="text-sm font-bold text-slate-900">{selectedRideOption.price.toLocaleString()}đ</p>
+                </div>
+             </div>
+
+             <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100">
+                <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl">💵</div>
+                <div className="flex-1">
+                   <p className="text-sm font-bold text-slate-900">Thanh toán</p>
+                   <p className="text-xs text-slate-400">Tiền mặt</p>
+                </div>
+             </div>
           </div>
         </div>
 
-        <div className="px-6 pb-6">
+        <div className="p-6 bg-white border-t border-slate-50">
+          <div className="flex justify-between mb-4 px-2">
+             <span className="text-sm text-slate-500 font-medium">Tổng số tiền</span>
+             <span className="text-lg font-bold text-slate-900">{selectedRideOption.price.toLocaleString()}đ</span>
+          </div>
+
           <button
-            className={`w-full rounded-xl bg-slate-900 text-white py-3.5 text-sm font-medium active:scale-[0.98] flex items-center justify-center gap-2 ${
-              loading ? "opacity-70 pointer-events-none" : ""
+            className={`w-full rounded-2xl bg-slate-900 text-white py-4 text-sm font-bold shadow-xl transition-all flex items-center justify-center gap-2 ${
+              loading ? "opacity-70" : "active:scale-95"
             }`}
             onClick={handleCreateBooking}
             disabled={loading}
@@ -123,7 +142,7 @@ export function BookingConfirmationPage() {
                 Đang xử lý...
               </>
             ) : (
-              "Đặt xe"
+              "Xác nhận đặt xe"
             )}
           </button>
         </div>

@@ -24,7 +24,7 @@ async function startServer() {
   try {
     const messageBroker = require('./src/utils/messageBroker');
     await messageBroker.connect();
-    
+
     // START KAFKA CONSUMERS (Phase 1 & 3)
     try {
       const { getEnv } = require('./src/config/env.js');

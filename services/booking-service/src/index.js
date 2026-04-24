@@ -23,7 +23,7 @@ startService("booking-service", async (app) => {
 
         app.use("/api/v1/bookings", bookingRoutes);
         console.log(`🚀 Booking Service ready on port ${process.env.PORT || 3103}`);
-        
+
     } catch (error) {
         console.error("❌ Startup Error:", error.message);
         process.exit(1);

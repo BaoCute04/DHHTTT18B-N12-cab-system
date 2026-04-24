@@ -307,11 +307,11 @@ async function acceptRide(rideId, driverId) {
     await saveRide(ride);
   }
 
-  await emitRideStatusChanged(serializeRide(ride), { 
+  await emitRideStatusChanged(serializeRide(ride), {
     action: 'accepted',
-    driverId 
+    driverId
   });
-  
+
   return ride;
 }
 
@@ -345,7 +345,7 @@ async function updateRideLocation(rideId, driverId, location) {
     ride.updatedAt = new Date();
 
     if (ride.status === RIDE_STATUS.ACCEPTED) {
-       ride.status = RIDE_STATUS.DRIVER_ARRIVING;
+      ride.status = RIDE_STATUS.DRIVER_ARRIVING;
     }
 
     if (
