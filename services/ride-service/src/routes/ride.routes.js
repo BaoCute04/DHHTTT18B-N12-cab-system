@@ -3,8 +3,8 @@
  * Defines all ride API endpoints
  */
 
-const express = require('express');
-const rideController = require('../controllers/ride.controller');
+import express from 'express';
+import * as rideController from '../controllers/ride.controller.js';
 
 const router = express.Router();
 
@@ -45,4 +45,4 @@ router.post('/:rideId/complete', rideController.completeRide);
 // Cancel a ride
 router.post('/:rideId/cancel', rideController.cancelRide);
 
-module.exports = router;
+export default router;

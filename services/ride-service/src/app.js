@@ -3,10 +3,10 @@
  * Sets up middleware and routes
  */
 
-const express = require('express');
-const rideRoutes = require('./routes/ride.routes');
-const rideController = require('./controllers/ride.controller');
-const { authContextMiddleware } = require('./middleware/auth-context');
+import express from 'express';
+import rideRoutes from './routes/ride.routes.js';
+import * as rideController from './controllers/ride.controller.js';
+import { authContextMiddleware } from './middleware/auth-context.js';
 
 /**
  * Create and configure Express app
@@ -120,6 +120,6 @@ function createApp() {
   return app;
 }
 
-module.exports = {
+export {
   createApp,
 };

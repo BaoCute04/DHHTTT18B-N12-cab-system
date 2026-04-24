@@ -17,8 +17,9 @@ export function RideInProgressPage() {
       const result = await rideApi.completeRide(currentRide.rideId, currentRide.driverId);
       
       if (result.success || result.data) {
-        setCurrentRide(result.data || result);
-        navigate("/driver/ride/complete");
+        const finalRide = result.data || result;
+        setCurrentRide(finalRide);
+        navigate("/driver/ride/complete", { state: { ride: finalRide } });
       } else {
         alert(result.message || "Failed to complete ride");
       }
@@ -61,11 +62,11 @@ export function RideInProgressPage() {
           <div className="rounded-2xl bg-slate-50 p-4 mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span>Quãng đường còn lại</span>
-              <span>3.4 km</span>
+              <span>{Number(currentRide?.distanceKm || 0).toFixed(1)} km</span>
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span>Thời gian dự kiến</span>
-              <span>10 phút</span>
+              <span>{currentRide?.etaMinutes || Math.ceil((currentRide?.distanceKm || 0) * 2) || 10} phút</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Thu nhập</span>

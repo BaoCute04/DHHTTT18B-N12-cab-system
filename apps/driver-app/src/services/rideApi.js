@@ -10,21 +10,21 @@ async function handleResponse(response) {
 
 export const rideApi = {
   getRide: async (rideId) => {
-    const res = await request(`/ride/${rideId}`, {
+    const res = await request(`/rides/${rideId}`, {
       method: "GET"
     });
     return handleResponse(res);
   },
 
   acceptRide: async (rideId) => {
-    const res = await request(`/ride/${rideId}/accept`, {
+    const res = await request(`/rides/${rideId}/accept`, {
       method: "POST"
     });
     return handleResponse(res);
   },
 
   startRide: async (rideId, driverId) => {
-    const res = await request(`/ride/${rideId}/start`, {
+    const res = await request(`/rides/${rideId}/start`, {
       method: "POST",
       body: JSON.stringify({ driverId })
     });
@@ -32,7 +32,7 @@ export const rideApi = {
   },
 
   completeRide: async (rideId, driverId) => {
-    const res = await request(`/ride/${rideId}/complete`, {
+    const res = await request(`/rides/${rideId}/complete`, {
       method: "POST",
       body: JSON.stringify({ driverId })
     });
@@ -40,7 +40,7 @@ export const rideApi = {
   },
 
   updateLocation: async (rideId, driverId, lat, lng) => {
-    const res = await request(`/ride/${rideId}/location`, {
+    const res = await request(`/rides/${rideId}/location`, {
       method: "POST",
       body: JSON.stringify({ 
         driverId,
@@ -51,14 +51,14 @@ export const rideApi = {
   },
 
   getHistory: async (driverId) => {
-    const res = await request(`/ride/driver/${driverId}/history`, {
+    const res = await request(`/rides/driver/${driverId}/history`, {
       method: "GET"
     });
     return handleResponse(res);
   },
 
   cancelRide: async (rideId, reason) => {
-    const res = await request(`/ride/${rideId}/cancel`, {
+    const res = await request(`/rides/${rideId}/cancel`, {
       method: "POST",
       body: JSON.stringify({ reason })
     });

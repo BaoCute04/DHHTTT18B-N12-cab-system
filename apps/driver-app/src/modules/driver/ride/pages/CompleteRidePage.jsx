@@ -37,15 +37,15 @@ export function CompleteRidePage() {
             <div className="text-xs text-slate-600 space-y-1">
               <div className="flex justify-between">
                 <span>Quãng đường</span>
-                <span>{ride.distance || "5.2 km"}</span>
+                <span>{Number(ride.distanceKm || ride.distance || 0).toFixed(1)} km</span>
               </div>
               <div className="flex justify-between">
                 <span>Thời gian</span>
-                <span>{ride.duration || "15 phút"}</span>
+                <span>{ride.duration || Math.ceil((ride.distanceKm || ride.distance || 0) * 2) || 10} phút</span>
               </div>
               <div className="flex justify-between font-semibold text-slate-900">
                 <span>Thu nhập</span>
-                <span>{ride.estimatedFare || "45.000đ"}</span>
+                <span>{(ride.priceSnapshot || ride.price || ride.estimatedFare || 0).toLocaleString()}đ</span>
               </div>
             </div>
           </div>

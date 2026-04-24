@@ -5,7 +5,7 @@
 
 'use strict';
 
-const { createMtlsFetch } = require('../../../../platform/node/mtls-client.cjs');
+import { createMtlsFetch } from '../../../../platform/node/mtls-client.cjs';
 
 const ETA_SERVICE_URL = (process.env.ETA_SERVICE_URL || 'http://eta-service:3110').replace(/\/$/, '');
 const ETA_TIMEOUT_MS = Math.max(Number(process.env.ETA_SERVICE_TIMEOUT_MS || 2500), 500);
@@ -182,7 +182,7 @@ async function calculateRideEstimates(currentLocation, pickup, destination, opts
   }
 }
 
-module.exports = {
+export {
   calculateDistance,
   calculateETA,
   calculatePickupETA,

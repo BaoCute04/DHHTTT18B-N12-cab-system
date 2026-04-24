@@ -1,149 +1,57 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: CAB Auth Service API (Gateway Contract)
-  version: 0.2.0
-  description: |
-    Public contract for auth endpoints exposed through `api-gateway` at `/auth/*`.
-    This version includes OAuth alias endpoints, `/auth/me`, JWT bundle claims
-    (`scope`, `permissions`), and phase-7 failure policy expectations.
-servers:
-  - url: http://localhost:3000/auth
-tags:
-  - name: Health
-  - name: OTP
-  - name: Admin
-  - name: Session
-  - name: Keys
+  title: Auth Service API
+  version: 1.0.0
+  description: API quản lý xác thực và OTP cho CAB Booking.
+
 paths:
-  /health:
-    get:
-      tags: [Health]
-      summary: Auth service health
-      responses:
-        "200":
-          description: Healthy
-        "503":
-          description: Degraded (dependency unavailable)
   /login/otp/request:
     post:
-      tags: [OTP]
-      summary: Request OTP
+      summary: Yêu cầu gửi mã OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phoneNumber:
+                  type: string
+                  example: "0912345678"
       responses:
-        "202":
-          description: OTP accepted
-        "429":
-          description: OTP throttled
-        "503":
-          description: Redis unavailable (fail-closed)
+        '200':
+          description: OTP đã được gửi
+        '429':
+          description: Gửi quá nhanh (Rate limit)
+
   /login/otp/verify:
     post:
-      tags: [OTP]
-      summary: Verify OTP and issue token pair
+      summary: Xác thực OTP và nhận Token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phoneNumber:
+                  type: string
+                otp:
+                  type: string
       responses:
-        "200":
-          description: OTP verified
-        "400":
-          description: Invalid OTP
-        "423":
-          description: OTP temporarily locked
-        "503":
-          description: Redis unavailable (fail-closed)
-  /login/admin:
-    post:
-      tags: [Admin]
-      summary: Admin password stage (returns MFA challenge only)
-      responses:
-        "200":
-          description: Password accepted, MFA required
-        "401":
-          description: Invalid credentials
-        "423":
-          description: Admin account temporarily locked
-        "503":
-          description: Auth DB unavailable (fail-closed)
-  /mfa/challenge:
-    post:
-      tags: [Admin]
-      summary: Complete MFA challenge and issue token pair
-      responses:
-        "200":
-          description: MFA completed and tokens issued
-        "401":
-          description: Invalid challenge or MFA code
-        "503":
-          description: Auth DB unavailable (fail-closed)
-  /refresh:
-    post:
-      tags: [Session]
-      summary: Rotate refresh token and issue new token pair
-      responses:
-        "200":
-          description: Rotation success
-        "401":
-          description: Invalid or reused refresh token
-        "503":
-          description: DB/Redis unavailable (fail-closed)
-  /oauth/token:
-    post:
-      tags: [Session]
-      summary: OAuth alias for refresh (`grant_type=refresh_token`)
-      responses:
-        "200":
-          description: Rotation success
-        "401":
-          description: Invalid or reused refresh token
-        "503":
-          description: DB/Redis unavailable (fail-closed)
-  /logout:
-    post:
-      tags: [Session]
-      summary: Revoke current refresh family/session
-      responses:
-        "200":
-          description: Session revoked
-        "503":
-          description: DB/Redis unavailable (fail-closed)
-  /oauth/revoke:
-    post:
-      tags: [Session]
-      summary: OAuth alias for revoke/logout by refresh token
-      responses:
-        "200":
-          description: Session revoked
-        "503":
-          description: DB/Redis unavailable (fail-closed)
-  /logout-all:
-    post:
-      tags: [Session]
-      summary: Revoke all sessions for account inferred by refresh token
-      responses:
-        "200":
-          description: All sessions revoked
-        "503":
-          description: DB/Redis unavailable (fail-closed)
-  /auth/me:
-    get:
-      tags: [Session]
-      summary: Resolve auth context from Bearer token
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Auth context for current token
-        "401":
-          description: Missing/invalid access token
-        "503":
-          description: DB unavailable (fail-closed)
-  /.well-known/jwks.json:
-    get:
-      tags: [Keys]
-      summary: Retrieve JWKS for JWT verification
-      responses:
-        "200":
-          description: JWKS document
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+        '200':
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+        '401':
+          description: OTP không chính xác

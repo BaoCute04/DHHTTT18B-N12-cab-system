@@ -10,13 +10,13 @@ export function DriverIncomingRideRequestPage() {
 
   const handleAccept = async () => {
     if (!currentRide) return;
-    
+
     setLoading(true);
     try {
       const rideId = currentRide.rideId || currentRide.id;
-      
+
       const result = await rideApi.acceptRide(rideId);
-      
+
       if (result.success || result.data) {
         setCurrentRide(result.data || result);
         navigate("/driver/ride/navigate-pickup");
@@ -39,7 +39,7 @@ export function DriverIncomingRideRequestPage() {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white">
         <p>Không có yêu cầu mới</p>
-        <button 
+        <button
           onClick={() => navigate("/driver/availability/dashboard")}
           className="mt-4 text-sm text-slate-400 underline"
         >
@@ -60,7 +60,7 @@ export function DriverIncomingRideRequestPage() {
             🚗
           </div>
           <h1 className="text-xl font-bold text-slate-900">Yêu cầu mới!</h1>
-          <p className="text-sm text-slate-500">4.5 km · 8 phút di chuyển</p>
+          <p className="text-sm text-slate-500">{(currentRide.distanceKm || currentRide.distance_km || 0).toFixed(1)} km · {Math.ceil((currentRide.distanceKm || currentRide.distance_km || 0) * 2)} phút di chuyển</p>
         </div>
 
         <div className="space-y-4 mb-8">
@@ -70,11 +70,11 @@ export function DriverIncomingRideRequestPage() {
               <span className="h-6 border-l border-dashed border-slate-300"></span>
               <span className="text-red-500">●</span>
             </div>
-            <div className="flex-1 text-sm">
+            <div className="flex-1 text-sm overflow-hidden">
               <p className="font-medium text-slate-900">Điểm đón</p>
-              <p className="text-slate-500 mb-2 truncate">{currentRide.pickup?.address || "Đang xác định..."}</p>
+              <p className="text-slate-500 mb-2 line-clamp-2 leading-relaxed">{currentRide.pickup?.address || "Hồ Chí Minh, Việt Nam"}</p>
               <p className="font-medium text-slate-900">Điểm đến</p>
-              <p className="text-slate-500 truncate">{currentRide.destination?.address || "Đang xác định..."}</p>
+              <p className="text-slate-500 line-clamp-2 leading-relaxed">{currentRide.destination?.address || "Hồ Chí Minh, Việt Nam"}</p>
             </div>
           </div>
 
@@ -82,13 +82,13 @@ export function DriverIncomingRideRequestPage() {
             <div>
               <p className="text-xs text-slate-500">Giá chuyến đi</p>
               <p className="text-lg font-bold text-slate-900">
-                {(currentRide.priceSnapshot || currentRide.estimatedPrice || 45000).toLocaleString()}đ
+                {Number(currentRide.priceSnapshot || currentRide.price || currentRide.estimatedPrice || 0).toLocaleString()}đ
               </p>
             </div>
-            <div className="text-right">
+            {/* <div className="text-right">
               <p className="text-xs text-slate-500">Loại xe</p>
-              <p className="text-sm font-semibold text-slate-900 capitalize">{currentRide.rideType || "Car"}</p>
-            </div>
+              <p className="text-sm font-semibold text-slate-900 capitalize">{currentRide.rideType || currentRide.vehicleType || "Car"}</p>
+            </div> */}
           </div>
         </div>
 
@@ -100,9 +100,8 @@ export function DriverIncomingRideRequestPage() {
             Từ chối
           </button>
           <button
-            className={`flex-[2] py-4 rounded-2xl bg-slate-900 text-white font-semibold shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 ${
-              loading ? "opacity-70 pointer-events-none" : ""
-            }`}
+            className={`flex-[2] py-4 rounded-2xl bg-slate-900 text-white font-semibold shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 ${loading ? "opacity-70 pointer-events-none" : ""
+              }`}
             onClick={handleAccept}
             disabled={loading}
           >

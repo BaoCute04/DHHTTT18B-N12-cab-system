@@ -3,10 +3,10 @@
  * Defines the structure of a Ride document
  */
 
-const { v4: uuidv4 } = require('uuid');
+import { v4 as uuidv4 } from 'uuid';
 
 // Ride Status Enum
-const RIDE_STATUS = {
+export const RIDE_STATUS = {
   REQUESTED: 'REQUESTED',
   SEARCHING: 'SEARCHING',
   WAITING_FOR_ACCEPTANCE: 'WAITING_FOR_ACCEPTANCE',
@@ -34,6 +34,8 @@ class Ride {
     // Financial Data (Phase 2)
     this.quoteId = data.quoteId || null;
     this.priceSnapshot = data.priceSnapshot || 0;
+    this.distanceKm = data.distanceKm || 0;
+    this.rideType = data.rideType || 'bike';
     this.paymentStatus = data.paymentStatus || 'PENDING';
     this.paymentId = data.paymentId || null;
 
@@ -58,6 +60,8 @@ class Ride {
       status: this.status,
       quoteId: this.quoteId,
       priceSnapshot: this.priceSnapshot,
+      distanceKm: this.distanceKm,
+      rideType: this.rideType,
       paymentStatus: this.paymentStatus,
       paymentId: this.paymentId,
       pickup: this.pickup,
@@ -103,7 +107,6 @@ class Ride {
   }
 }
 
-module.exports = {
+export {
   Ride,
-  RIDE_STATUS,
 };

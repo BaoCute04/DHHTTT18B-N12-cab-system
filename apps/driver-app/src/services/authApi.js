@@ -16,7 +16,7 @@ export const authApi = {
       body: JSON.stringify({
         role: "driver",
         destination: phone,
-        channel: "phone"
+        channel: "sms"
       })
     });
     return handleResponse(res);

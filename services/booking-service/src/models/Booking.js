@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 const locationSchema = new mongoose.Schema({
     lat: { type: Number, required: true },
-    lng: { type: Number, required: true }
+    lng: { type: Number, required: true },
+    address: { type: String, required: false }
 }, { _id: false });
 
 const bookingSchema = new mongoose.Schema({

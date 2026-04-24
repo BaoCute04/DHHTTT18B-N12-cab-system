@@ -56,11 +56,11 @@ export function RideTrackingPage() {
           <div className="rounded-2xl bg-slate-50 p-4 mb-6">
             <div className="flex justify-between text-sm mb-2">
               <span>Khoảng cách còn lại</span>
-              <span>3.1 km</span>
+              <span>{Number(ride?.distanceKm || 0).toFixed(1)} km</span>
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span>Thời gian dự kiến</span>
-              <span>{eta} phút</span>
+              <span>{ride?.etaMinutes || Math.ceil((ride?.distanceKm || 0) * 2) || eta} phút</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Điểm đến</span>

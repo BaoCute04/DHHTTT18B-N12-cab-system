@@ -3,11 +3,11 @@
  * Handles HTTP requests for ride operations
  */
 
-const { v4: uuidv4 } = require('uuid');
-const rideService = require('../services/ride.service');
-const locationService = require('../services/location.service');
-const { isAdminActor, isAuthenticatedActor } = require('../middleware/auth-context');
-const { recordAuditEvent } = require('../utils/audit');
+import { v4 as uuidv4 } from 'uuid';
+import rideService from '../services/ride.service.js';
+import * as locationService from '../services/location.service.js';
+import { isAdminActor, isAuthenticatedActor } from '../middleware/auth-context.js';
+import { recordAuditEvent } from '../utils/audit.js';
 
 function generateRequestId() {
   return uuidv4();
@@ -819,11 +819,10 @@ function createHttpError(statusCode, message) {
   return error;
 }
 
-module.exports = {
+export {
   createRide,
   getRide,
   getUserRides,
-  getDriverHistory,
   assignDriver,
   acceptRide,
   updateLocation,
@@ -831,4 +830,5 @@ module.exports = {
   completeRide,
   cancelRide,
   getStatistics,
+  getDriverHistory,
 };

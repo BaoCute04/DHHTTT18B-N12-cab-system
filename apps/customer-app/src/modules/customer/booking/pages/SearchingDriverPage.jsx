@@ -23,9 +23,13 @@ export function SearchingDriverPage() {
         try {
           const message = JSON.parse(data);
           if (message.type === "ride.assigned" || message.type === "ride.status.changed") {
-            if (message.payload?.bookingId === booking.bookingId || message.payload?.rideId === booking.bookingId) {
-              setRide(message.payload);
-              navigate("/customer/ride/driver-assigned");
+            const payload = message.payload || message;
+            if (payload?.bookingId === booking.bookingId || payload?.rideId === booking.bookingId) {
+              setRide(payload);
+              // Chỉ chuyển trang khi tài xế đã thực sự chấp nhận (ACCEPTED)
+              if (payload.status === "ACCEPTED") {
+                navigate("/customer/ride/driver-assigned");
+              }
             }
           }
         } catch (e) {

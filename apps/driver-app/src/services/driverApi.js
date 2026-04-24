@@ -10,28 +10,28 @@ async function handleResponse(response) {
 
 export const driverApi = {
   getDriver: async (driverId) => {
-    const res = await request(`/driver/${driverId}`, {
+    const res = await request(`/drivers/${driverId}`, {
       method: "GET"
     });
     return handleResponse(res);
   },
 
   goOnline: async (driverId) => {
-    const res = await request(`/driver/${driverId}/go-online`, {
+    const res = await request(`/drivers/${driverId}/go-online`, {
       method: "POST"
     });
     return handleResponse(res);
   },
 
   goOffline: async (driverId) => {
-    const res = await request(`/driver/${driverId}/go-offline`, {
+    const res = await request(`/drivers/${driverId}/go-offline`, {
       method: "POST"
     });
     return handleResponse(res);
   },
 
   updateLocation: async (driverId, lat, lng) => {
-    const res = await request(`/driver/${driverId}/location`, {
+    const res = await request(`/drivers/${driverId}/location`, {
       method: "PATCH",
       body: JSON.stringify({
         location: {

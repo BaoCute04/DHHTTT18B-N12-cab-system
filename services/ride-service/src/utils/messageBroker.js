@@ -1,4 +1,4 @@
-const { Kafka } = require('kafkajs');
+import { Kafka } from 'kafkajs';
 
 class MessageBroker {
     constructor() {
@@ -36,4 +36,4 @@ class MessageBroker {
     }
 }
 
-module.exports = new MessageBroker();
+export default new MessageBroker();

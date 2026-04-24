@@ -20,7 +20,7 @@ export function BookingConfirmationPage() {
       
       // Gateway requires a valid UUID for userId
       // If session doesn't have a real UUID, we generate a stable one or a random one for testing
-      const userId = session?.user?.userId || uuidv4();
+      const userId = session?.user?.subject_id || session?.user?.id || uuidv4();
 
       const payload = {
         userId: userId,
@@ -36,7 +36,8 @@ export function BookingConfirmationPage() {
         },
         vehicleType: selectedRideOption.id || "bike",
         paymentMethod: "CASH",
-        distanceKm: selectedRideOption.distance > 0 ? selectedRideOption.distance : 0.1
+        distanceKm: selectedRideOption.distance > 0 ? selectedRideOption.distance : 0.1,
+        price: selectedRideOption.price
       };
 
       console.log("[Booking] Sending payload to gateway:", payload);

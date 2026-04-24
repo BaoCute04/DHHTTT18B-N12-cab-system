@@ -40,11 +40,11 @@ export function NavigateToPickupPage() {
           <div className="rounded-2xl bg-slate-50 p-4 mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span>Khoảng cách</span>
-              <span>2.1 km</span>
+              <span>{Number(currentRide?.distanceKm || 0).toFixed(1)} km</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span>Thời gian đến</span>
-              <span>5 phút</span>
+            <div className="flex justify-between text-sm mb-2">
+              <span>Thời gian dự kiến</span>
+              <span>{currentRide?.etaMinutes || Math.ceil((currentRide?.distanceKm || 0) * 2) || 10} phút</span>
             </div>
           </div>
 

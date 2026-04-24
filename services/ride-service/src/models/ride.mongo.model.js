@@ -1,4 +1,5 @@
-const { Schema, model } = require('mongoose');
+import mongoose from 'mongoose';
+const { Schema, model } = mongoose;
 
 const RideStatus = {
   REQUESTED: 'REQUESTED',
@@ -36,6 +37,8 @@ const rideSchema = new Schema(
     // Financial Data
     quoteId: { type: String, default: null },
     priceSnapshot: { type: Number, default: 0 },
+    distanceKm: { type: Number, default: 0 },
+    rideType: { type: String, default: 'bike' },
     paymentStatus: { type: String, default: 'PENDING' },
     paymentId: { type: String, default: null },
     pickup: { type: coordinateSchema, required: true },
@@ -59,10 +62,8 @@ rideSchema.set('toJSON', {
   },
 });
 
-const RideMongoModel = model('Ride', rideSchema);
+export const RideMongoModel = model('Ride', rideSchema);
 
-module.exports = {
-  RideMongoModel,
-  RideStatus,
+export {
   rideSchema,
 };

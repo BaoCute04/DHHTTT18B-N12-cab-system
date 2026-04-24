@@ -1,4 +1,4 @@
-const { Kafka, logLevel } = require('kafkajs');
+import { Kafka, logLevel } from 'kafkajs';
 
 let producerPromise = null;
 
@@ -64,6 +64,6 @@ async function publishRideEvent(topic, payload, key = null) {
   return { published: true };
 }
 
-module.exports = {
+export {
   publishRideEvent,
 };

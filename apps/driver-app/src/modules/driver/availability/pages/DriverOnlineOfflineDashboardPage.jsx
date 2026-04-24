@@ -14,7 +14,7 @@ export function DriverOnlineOfflineDashboardPage() {
   const [driverInfo, setDriverInfo] = useState(null);
 
   const toggleOnline = async () => {
-    const driverId = session?.user?.id || session?.id || "driver-123";
+    const driverId = session?.user?.subject_id || session?.user?.id || session?.id || "driver-123";
     
     if (onlineStatus === "ONLINE") {
       try {
@@ -35,7 +35,7 @@ export function DriverOnlineOfflineDashboardPage() {
   };
 
   useEffect(() => {
-    const driverId = session?.user?.id || session?.id || "driver-123";
+    const driverId = session?.user?.subject_id || session?.user?.id || session?.id || "driver-123";
     
     const fetchDriver = async () => {
       try {

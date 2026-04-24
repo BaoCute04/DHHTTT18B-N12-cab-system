@@ -3,14 +3,14 @@
  * Business logic for ride operations with optional MongoDB persistence
  */
 
-const { v4: uuidv4 } = require('uuid');
-const axios = require('axios');
-const { Ride, RIDE_STATUS } = require('../models/ride.model');
-const { RideMongoModel } = require('../models/ride.mongo.model');
-const { calculateETA } = require('./eta.service');
-const { updateDriverLocation } = require('./location.service');
-const { publishRideEvent } = require('./kafka.publisher');
-const { isMongoConnected } = require('../database/mongoose');
+import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
+import { Ride, RIDE_STATUS } from '../models/ride.model.js';
+import { RideMongoModel } from '../models/ride.mongo.model.js';
+import { calculateETA } from './eta.service.js';
+import { updateDriverLocation } from './location.service.js';
+import { publishRideEvent } from './kafka.publisher.js';
+import { isMongoConnected } from '../database/mongoose.js';
 
 
 const rides = new Map();
@@ -37,7 +37,6 @@ function fromMongoDoc(doc) {
 
 function setRideFields(ride, updates) {
   Object.assign(ride, updates);
-  ride.updatedAt = new Date().toISOString();
   return ride;
 }
 
@@ -66,6 +65,10 @@ async function emitRideStatusChanged(ride, extra = {}) {
       pickup: ride.pickup || null,
       destination: ride.destination || null,
       etaMinutes: ride.etaMinutes ?? null,
+      price: ride.priceSnapshot || 0,
+      priceSnapshot: ride.priceSnapshot || 0,
+      distanceKm: ride.distanceKm || 0,
+      rideType: ride.rideType || 'bike',
       updatedAt: ride.updatedAt,
       ...extra,
     }, ride.rideId);
@@ -240,9 +243,10 @@ async function createRide(rideData) {
     pickup: rideData.pickup,
     destination: rideData.destination,
     priceSnapshot: rideData.priceSnapshot || 0,
+    distanceKm: rideData.distanceKm || 0,
+    rideType: rideData.rideType || 'bike',
     quoteId: rideData.quoteId || null,
-    status: rideData.status || RIDE_STATUS.SEARCHING,
-    updatedAt: new Date().toISOString()
+    status: rideData.status || RIDE_STATUS.SEARCHING
   };
 
   let savedRide;
@@ -287,7 +291,6 @@ async function assignDriver(rideId, driverId) {
   if (usesMongo()) {
     ride.driverId = driverId;
     ride.status = RIDE_STATUS.WAITING_FOR_ACCEPTANCE;
-    ride.updatedAt = new Date();
     await ride.save();
     await emitDriverAssigned(ride);
     await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
@@ -318,7 +321,6 @@ async function acceptRide(rideId, driverId) {
 
   if (usesMongo()) {
     ride.status = RIDE_STATUS.ACCEPTED;
-    ride.updatedAt = new Date();
     await ride.save();
   } else {
     ride.status = RIDE_STATUS.ACCEPTED;
@@ -361,7 +363,6 @@ async function updateRideLocation(rideId, driverId, location) {
 
   if (usesMongo()) {
     ride.currentLocation = location;
-    ride.updatedAt = new Date();
 
     if (ride.status === RIDE_STATUS.ACCEPTED) {
       ride.status = RIDE_STATUS.DRIVER_ARRIVING;
@@ -431,12 +432,12 @@ async function startRide(rideId, driverId) {
   }
 
   if (
-    ![RIDE_STATUS.DRIVER_ASSIGNED, RIDE_STATUS.DRIVER_ARRIVING].includes(
+    ![RIDE_STATUS.ACCEPTED, RIDE_STATUS.DRIVER_ASSIGNED, RIDE_STATUS.DRIVER_ARRIVING].includes(
       ride.status
     )
   ) {
     throw new Error(
-      `Cannot start ride in ${ride.status} status. Must be in DRIVER_ASSIGNED or DRIVER_ARRIVING`
+      `Cannot start ride in ${ride.status} status. Must be in ACCEPTED, DRIVER_ASSIGNED or DRIVER_ARRIVING`
     );
   }
 
@@ -609,7 +610,7 @@ async function clearAllRides() {
   rides.clear();
 }
 
-module.exports = {
+export default {
   createRide,
   getRideById,
   getRidesByUserId,
@@ -622,4 +623,19 @@ module.exports = {
   getHistoryByDriverId,
   getRideStatistics,
   clearAllRides,
+};
+
+export {
+    createRide,
+    getRideById,
+    getRidesByUserId,
+    getRidesByDriverId,
+    acceptRide,
+    updateRideLocation,
+    startRide,
+    completeRide,
+    cancelRide,
+    getHistoryByDriverId,
+    getRideStatistics,
+    clearAllRides,
 };

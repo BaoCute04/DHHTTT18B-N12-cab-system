@@ -134,9 +134,16 @@ export async function request(path, options = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  const token = localStorage.getItem("accessToken");
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  const savedSession = localStorage.getItem("sessionData");
+  if (savedSession) {
+    try {
+      const { accessToken } = JSON.parse(savedSession);
+      if (accessToken) {
+        headers.set("Authorization", `Bearer ${accessToken}`);
+      }
+    } catch (e) {
+      console.error("Failed to parse session from localStorage", e);
+    }
   }
 
   const fetchOptions = {
@@ -150,8 +157,8 @@ export async function request(path, options = {}) {
     // Dispatch event to handle globally via routing or provider
     window.dispatchEvent(new Event("session-expired"));
     // Optionally remove tokens
-    localStorage.removeItem("accessToken");
     localStorage.removeItem("sessionData");
+    localStorage.removeItem("accessToken");
   }
 
   return response;

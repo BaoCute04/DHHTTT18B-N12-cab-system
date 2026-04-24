@@ -28,7 +28,7 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
     timeoutMs: upstreamTimeoutMs
   }));
 
-  const authRatePolicy = createRatePolicy("auth", 5, 60_000, "ip");
+  const authRatePolicy = createRatePolicy("auth", 100, 60_000, "ip");
 
   const policies = [
     {
