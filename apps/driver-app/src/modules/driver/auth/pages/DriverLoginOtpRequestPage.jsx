@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { request } from "@/services/httpClient.js";
+import { authApi } from "@/services/authApi.js";
 
 export function DriverLoginOtpRequestPage() {
   const navigate = useNavigate();
@@ -15,21 +16,13 @@ export function DriverLoginOtpRequestPage() {
 
     setLoading(true);
     try {
-      const response = await request("/api/v1/auth/otp/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: "driver",
-          destination: phone,
-          channel: "sms"
-        })
-      });
+      const result = await authApi.requestOtp(phone);
 
-      const result = await response.json();
-      if (result.success || result.challengeStatus === "accepted") {
-        if (result.debugOtpCode) {
-          console.log("DEBUG OTP CODE:", result.debugOtpCode);
-          alert(`Mã OTP Driver (Debug): ${result.debugOtpCode}`);
+      if (result.success || result.data || result.challengeStatus === "accepted") {
+        const debugCode = result.debugOtpCode || result.data?.debugOtpCode;
+        if (debugCode) {
+          console.log("DEBUG OTP CODE:", debugCode);
+          alert(`Mã OTP Driver (Debug): ${debugCode}`);
         }
         localStorage.setItem("temp_driver_login_phone", phone);
         navigate("/driver/auth/verify-otp");
@@ -38,7 +31,7 @@ export function DriverLoginOtpRequestPage() {
       }
     } catch (error) {
       console.error("OTP Request Error:", error);
-      alert("Lỗi kết nối server (Kiểm tra Gateway)");
+      alert(error.message || "Lỗi kết nối server");
     } finally {
       setLoading(false);
     }

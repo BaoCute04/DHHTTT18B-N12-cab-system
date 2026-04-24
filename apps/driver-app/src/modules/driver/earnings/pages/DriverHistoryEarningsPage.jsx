@@ -32,8 +32,9 @@ export function DriverHistoryEarningsPage() {
     return rideDate === today;
   });
 
-  const totalEarnings = todayRides.reduce((sum, ride) => sum + (Number(ride.estimatedFare) || 0), 0);
-  const totalRides = todayRides.length;
+  const completedTodayRides = todayRides.filter(ride => ride.status === 'COMPLETED');
+  const totalEarnings = completedTodayRides.reduce((sum, ride) => sum + (Number(ride.priceSnapshot || ride.estimatedPrice || ride.estimatedFare) || 0), 0);
+  const totalRides = completedTodayRides.length;
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
@@ -81,7 +82,7 @@ export function DriverHistoryEarningsPage() {
                       <p className="text-xs text-slate-400 mt-0.5 capitalize">{ride.status}</p>
                     </div>
                     <span className="text-sm font-semibold text-green-700">
-                      +{Number(ride.estimatedFare || 0).toLocaleString('vi-VN')}đ
+                      +{Number(ride.priceSnapshot || ride.estimatedPrice || ride.estimatedFare || 0).toLocaleString('vi-VN')}đ
                     </span>
                   </div>
                 </div>

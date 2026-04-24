@@ -16,13 +16,9 @@ export const rideApi = {
     return handleResponse(res);
   },
 
-  acceptRide: async (rideId, driverId) => {
-    // Note: The /assign-driver API on backend actually requires Admin.
-    // We are deliberately keeping this as a real endpoint hit to expose the 403 error on the UI
-    // as per project requirements, highlighting the API/authorization mismatch blocker.
-    const res = await request(`/ride/${rideId}/assign-driver`, {
-      method: "POST",
-      body: JSON.stringify({ driverId })
+  acceptRide: async (rideId) => {
+    const res = await request(`/ride/${rideId}/accept`, {
+      method: "POST"
     });
     return handleResponse(res);
   },
@@ -55,7 +51,7 @@ export const rideApi = {
   },
 
   getHistory: async (driverId) => {
-    const res = await request(`/ride/user/${driverId}`, {
+    const res = await request(`/ride/driver/${driverId}/history`, {
       method: "GET"
     });
     return handleResponse(res);

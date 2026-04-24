@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDriverRide } from "@app/DriverRideProvider.jsx";
+import { rideApi } from "@/services/rideApi.js";
 import { request } from "@/services/httpClient.js";
 
 export function RideInProgressPage() {
@@ -13,24 +14,17 @@ export function RideInProgressPage() {
 
     setLoading(true);
     try {
-      const response = await request(`/api/v1/rides/${currentRide.rideId}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-           driverId: currentRide.driverId
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        setCurrentRide(result.data);
+      const result = await rideApi.completeRide(currentRide.rideId, currentRide.driverId);
+      
+      if (result.success || result.data) {
+        setCurrentRide(result.data || result);
         navigate("/driver/ride/complete");
       } else {
         alert(result.message || "Failed to complete ride");
       }
     } catch (error) {
       console.error("Complete ride error:", error);
-      alert("Đã có lỗi xảy ra.");
+      alert(error.message || "Đã có lỗi xảy ra.");
     } finally {
       setLoading(false);
     }
@@ -75,7 +69,7 @@ export function RideInProgressPage() {
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Thu nhập</span>
-              <span>{currentRide?.estimatedPrice?.toLocaleString() || "45.000"}đ</span>
+              <span>{(currentRide?.priceSnapshot || currentRide?.estimatedPrice || 45000).toLocaleString()}đ</span>
             </div>
           </div>
 

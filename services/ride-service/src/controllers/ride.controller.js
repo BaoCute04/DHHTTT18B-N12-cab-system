@@ -727,6 +727,52 @@ async function getStatistics(req, res) {
   }
 }
 
+async function getDriverHistory(req, res) {
+  try {
+    const requestId = generateRequestId();
+    const { driverId } = req.params;
+    const actor = requireAuthenticatedActor(req);
+
+    // Ensure the driver is accessing their own history or is an admin
+    enforceUserScope(actor, driverId);
+
+    const history = await rideService.getHistoryByDriverId(driverId);
+
+    auditRideSuccess(req, {
+      action: 'ride.list.driver.history',
+      targetType: 'driver',
+      targetId: driverId,
+      metadata: {
+        rideCount: history.length
+      }
+    });
+
+    return res.json(
+      createResponse({
+        success: true,
+        message: 'Driver ride history fetched',
+        data: history.map((ride) => ride.toJSON()),
+        requestId,
+      })
+    );
+  } catch (error) {
+    recordAuditEvent(req, {
+      action: 'ride.list.driver.history',
+      targetType: 'driver',
+      targetId: req.params?.driverId || null,
+      outcome: 'failure',
+      error
+    });
+    return res.status(error.statusCode || 500).json(
+      createResponse({
+        success: false,
+        message: error.message || 'Internal server error',
+        statusCode: error.statusCode || 500,
+      })
+    );
+  }
+}
+
 function auditRideSuccess(req, details) {
   recordAuditEvent(req, {
     outcome: 'success',
@@ -777,6 +823,7 @@ module.exports = {
   createRide,
   getRide,
   getUserRides,
+  getDriverHistory,
   assignDriver,
   acceptRide,
   updateLocation,

@@ -21,6 +21,9 @@ router.get('/stats', rideController.getStatistics);
 // Get ride history for a user through ride-service gateway namespace
 router.get('/user/:userId', rideController.getUserRides);
 
+// Get ride history for a driver
+router.get('/driver/:driverId/history', rideController.getDriverHistory);
+
 // Get ride by ID
 router.get('/:rideId', rideController.getRide);
 

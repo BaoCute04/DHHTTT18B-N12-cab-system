@@ -1,4 +1,8 @@
+import { useNavigate } from "react-router-dom";
+
 export function DriverKycBlockedPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -26,7 +30,10 @@ export function DriverKycBlockedPage() {
         </div>
 
         <div className="px-6 pb-8 space-y-3">
-          <button className="w-full rounded-xl bg-slate-900 text-white py-3.5 text-sm font-medium active:scale-[0.98]">
+          <button 
+            onClick={() => navigate("/driver/kyc/vehicle-profile")}
+            className="w-full rounded-xl bg-slate-900 text-white py-3.5 text-sm font-medium active:scale-[0.98]"
+          >
             Cập nhật KYC
           </button>
 
