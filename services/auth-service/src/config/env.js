@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 function parseInteger(value, fallback) {
     const parsed = Number.parseInt(value, 10);
     return Number.isNaN(parsed) ? fallback : parsed;
@@ -14,6 +16,15 @@ function parseList(value, fallback) {
         .filter(Boolean);
 }
 
+function readSecret(name, fallback = '') {
+    const filePath = String(process.env[`${name}_FILE`] || '').trim();
+    if (filePath) {
+        return fs.readFileSync(filePath, 'utf8').trim();
+    }
+
+    return String(process.env[name] ?? fallback);
+}
+
 function loadEnv() {
     return {
         nodeEnv: process.env.NODE_ENV || 'development',
@@ -24,14 +35,14 @@ function loadEnv() {
             host: process.env.AUTH_DB_HOST || 'postgres',
             port: parseInteger(process.env.AUTH_DB_PORT, 5432),
             user: process.env.AUTH_DB_USER || 'postgres',
-            password: process.env.AUTH_DB_PASSWORD || 'postgres',
+            password: readSecret('AUTH_DB_PASSWORD', 'postgres'),
             database: process.env.AUTH_DB_NAME || 'cab_auth',
             maxPoolSize: parseInteger(process.env.AUTH_DB_MAX_POOL_SIZE, 10),
         },
         redis: {
             host: process.env.AUTH_REDIS_HOST || 'redis',
             port: parseInteger(process.env.AUTH_REDIS_PORT, 6379),
-            password: process.env.AUTH_REDIS_PASSWORD || '',
+            password: readSecret('AUTH_REDIS_PASSWORD', ''),
             db: parseInteger(process.env.AUTH_REDIS_DB, 0),
             keyPrefix: process.env.AUTH_REDIS_KEY_PREFIX || 'cab:auth:',
             keys: {
@@ -58,14 +69,14 @@ function loadEnv() {
             refreshTokenTtlDays: parseInteger(process.env.AUTH_REFRESH_TOKEN_TTL_DAYS, 14),
             algorithm: process.env.AUTH_JWT_ALGORITHM || 'RS256',
             activeKid: process.env.AUTH_JWT_ACTIVE_KID || process.env.AUTH_JWT_KID || 'auth-key-local-1',
-            activePrivateKeyPem: process.env.AUTH_JWT_ACTIVE_PRIVATE_KEY_PEM || process.env.AUTH_JWT_PRIVATE_KEY_PEM || '',
-            activePublicKeyPem: process.env.AUTH_JWT_ACTIVE_PUBLIC_KEY_PEM || process.env.AUTH_JWT_PUBLIC_KEY_PEM || '',
+            activePrivateKeyPem: readSecret('AUTH_JWT_ACTIVE_PRIVATE_KEY_PEM', readSecret('AUTH_JWT_PRIVATE_KEY_PEM', '')),
+            activePublicKeyPem: readSecret('AUTH_JWT_ACTIVE_PUBLIC_KEY_PEM', readSecret('AUTH_JWT_PUBLIC_KEY_PEM', '')),
             previousKid: process.env.AUTH_JWT_PREVIOUS_KID || '',
-            previousPublicKeyPem: process.env.AUTH_JWT_PREVIOUS_PUBLIC_KEY_PEM || '',
+            previousPublicKeyPem: readSecret('AUTH_JWT_PREVIOUS_PUBLIC_KEY_PEM', ''),
         },
         adminBootstrap: {
             email: process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL || '',
-            password: process.env.AUTH_BOOTSTRAP_ADMIN_PASSWORD || '',
+            password: readSecret('AUTH_BOOTSTRAP_ADMIN_PASSWORD', ''),
         },
         otp: {
             ttlSeconds: parseInteger(process.env.AUTH_OTP_TTL_SECONDS, 300),
@@ -78,6 +89,7 @@ function loadEnv() {
             window: parseInteger(process.env.AUTH_ADMIN_MFA_WINDOW, 1),
             recoveryCodesCount: parseInteger(process.env.AUTH_ADMIN_RECOVERY_CODES_COUNT, 8),
             challengeTtlSeconds: parseInteger(process.env.AUTH_ADMIN_MFA_CHALLENGE_TTL_SECONDS, 300),
+            encryptionKey: readSecret('AUTH_ADMIN_MFA_ENCRYPTION_KEY', ''),
         },
         adminAuth: {
             maxFailedAttempts: parseInteger(process.env.AUTH_ADMIN_MAX_FAILED_ATTEMPTS, 5),

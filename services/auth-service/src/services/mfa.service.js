@@ -10,6 +10,7 @@ const {
 function createMfaService(options) {
     const { pool, redisClient, security, env } = options;
     const challengeTtlSeconds = Math.max(1, security.adminMfa.challengeTtlSeconds || 300);
+    const encryptionKey = resolveEncryptionKey(security.adminMfa.encryptionKey, env.nodeEnv);
 
     return {
         async ensureTotpEnrollment({ accountId, subjectId }) {
@@ -26,7 +27,7 @@ function createMfaService(options) {
                 accountLabel,
                 issuer: security.adminMfa.issuer,
             });
-            const enrollment = await createEnrollment(pool, accountId, generated.base32);
+            const enrollment = await createEnrollment(pool, accountId, encryptSecret(generated.base32, encryptionKey));
             const recoveryCodes = generateRecoveryCodes(security.adminMfa.recoveryCodesCount);
             await saveRecoveryCodes(pool, enrollment.id, recoveryCodes);
 
@@ -87,8 +88,9 @@ function createMfaService(options) {
                 return { method: 'recovery_code' };
             }
 
+            const secretBase32 = decryptSecret(enrollment.secret_encrypted, encryptionKey);
             const validTotp = verifyTotpCode({
-                secretBase32: enrollment.secret_encrypted,
+                secretBase32,
                 token: totpCode,
                 window: security.adminMfa.window,
             });
@@ -103,6 +105,53 @@ function createMfaService(options) {
             return { method: 'totp' };
         },
     };
+}
+
+function resolveEncryptionKey(configuredKey, nodeEnv) {
+    const normalizedConfiguredKey = String(configuredKey || '').trim();
+    if (normalizedConfiguredKey) {
+        return crypto.createHash('sha256').update(normalizedConfiguredKey).digest();
+    }
+
+    if (nodeEnv === 'production') {
+        const error = new Error('AUTH_ADMIN_MFA_ENCRYPTION_KEY is required in production');
+        error.code = 'MFA_ENCRYPTION_KEY_REQUIRED';
+        throw error;
+    }
+
+    return crypto.createHash('sha256').update('cab-auth-dev-mfa-key').digest();
+}
+
+function encryptSecret(secret, encryptionKey) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+    const encrypted = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+
+    return `enc:v1:${iv.toString('base64url')}:${authTag.toString('base64url')}:${encrypted.toString('base64url')}`;
+}
+
+function decryptSecret(storedSecret, encryptionKey) {
+    if (!storedSecret || typeof storedSecret !== 'string') {
+        throw new Error('Stored MFA secret is invalid');
+    }
+
+    if (!storedSecret.startsWith('enc:v1:')) {
+        return storedSecret;
+    }
+
+    const [, , ivPart, tagPart, encryptedPart] = storedSecret.split(':');
+    const decipher = crypto.createDecipheriv(
+        'aes-256-gcm',
+        encryptionKey,
+        Buffer.from(ivPart, 'base64url')
+    );
+    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+
+    return Buffer.concat([
+        decipher.update(Buffer.from(encryptedPart, 'base64url')),
+        decipher.final(),
+    ]).toString('utf8');
 }
 
 function buildAdminChallengeKey(challengeToken) {

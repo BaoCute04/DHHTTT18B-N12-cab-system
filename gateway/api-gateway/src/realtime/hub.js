@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { GatewayError } from "../errors.js";
+import { applyForwardedAuthHeaders } from "../security/internal-auth-headers.js";
 import { enforceDriverLocationAbac } from "../security/abac.js";
 import { extractBearerToken } from "../security/jwt-service.js";
 import { websocketSchemas } from "../validation-schemas.js";
@@ -14,11 +15,16 @@ export function createRealtimeHub({
   rideServiceUrl,
   fetchImpl = globalThis.fetch,
   upstreamTimeoutMs = 5000,
-  forwardDriverLocationUpdate
+  forwardDriverLocationUpdate,
+  resolveRideAccessContext
 }) {
   const webSocketServer = new WebSocketServer({ noServer: true });
   const connectionsById = new Map();
   const userConnections = new Map();
+  const resolveRideContext =
+    typeof resolveRideAccessContext === "function"
+      ? resolveRideAccessContext
+      : createRideAccessResolver({ rideServiceUrl, fetchImpl, upstreamTimeoutMs });
 
   function addConnection(connection) {
     connectionsById.set(connection.connectionId, connection);
@@ -80,8 +86,14 @@ export function createRealtimeHub({
           }
 
           const parsed = websocketSchemas.driverLocationUpdate.parse(message);
-          enforceDriverLocationAbac(auth, parsed.payload);
-          const forwardResult = await bridgeDriverLocationUpdate(parsed.payload);
+          const normalizedPayload = {
+            ...parsed.payload,
+            driverId: auth.userId || parsed.payload.driverId
+          };
+          await enforceDriverLocationAbac(auth, normalizedPayload, {
+            resolveRideContext
+          });
+          const forwardResult = await bridgeDriverLocationUpdate(normalizedPayload, auth);
           metrics.recordWsMessage(message.type, "accepted");
           socket.send(
             JSON.stringify({
@@ -183,9 +195,9 @@ export function createRealtimeHub({
     }
   };
 
-  async function bridgeDriverLocationUpdate(payload) {
+  async function bridgeDriverLocationUpdate(payload, authContext) {
     if (typeof forwardDriverLocationUpdate === "function") {
-      return forwardDriverLocationUpdate(payload);
+      return forwardDriverLocationUpdate(payload, authContext);
     }
 
     if (!rideServiceUrl || typeof fetchImpl !== "function") {
@@ -204,9 +216,9 @@ export function createRealtimeHub({
         `${String(rideServiceUrl).replace(/\/$/, "")}/api/v1/rides/${payload.rideId}/location`,
         {
           method: "POST",
-          headers: {
+          headers: applyForwardedAuthHeaders(new Headers({
             "content-type": "application/json"
-          },
+          }), authContext),
           body: JSON.stringify({
             driverId: payload.driverId,
             currentLocation: {
@@ -253,4 +265,70 @@ async function safeReadResponse(response) {
   } catch {
     return null;
   }
+}
+
+function createRideAccessResolver({ rideServiceUrl, fetchImpl, upstreamTimeoutMs }) {
+  if (!rideServiceUrl || typeof fetchImpl !== "function") {
+    return null;
+  }
+
+  const normalizedRideServiceUrl = String(rideServiceUrl).replace(/\/$/, "");
+
+  return async function resolveRideContext(rideId, authContext) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
+
+    try {
+      const response = await fetchImpl(`${normalizedRideServiceUrl}/api/v1/rides/${rideId}`, {
+        method: "GET",
+        headers: applyForwardedAuthHeaders(new Headers(), authContext),
+        signal: controller.signal
+      });
+
+      if (response.status === 404) {
+        return null;
+      }
+
+      if (!response.ok) {
+        const body = await safeReadResponse(response);
+        throw new GatewayError(
+          502,
+          "RIDE_AUTHORIZATION_LOOKUP_FAILED",
+          `Ride service rejected authorization lookup (${response.status})`,
+          {
+            body
+          }
+        );
+      }
+
+      const payload = await response.json().catch(() => null);
+      const ride = payload?.data || null;
+      if (!ride) {
+        throw new GatewayError(
+          502,
+          "RIDE_AUTHORIZATION_LOOKUP_FAILED",
+          "Ride service returned an unexpected authorization payload"
+        );
+      }
+
+      return {
+        rideId: ride.rideId || ride.bookingId || rideId,
+        driverId: ride.driverId || null,
+        userId: ride.userId || null,
+        status: ride.status || null
+      };
+    } catch (error) {
+      if (error instanceof GatewayError) {
+        throw error;
+      }
+
+      throw new GatewayError(
+        502,
+        "RIDE_AUTHORIZATION_LOOKUP_FAILED",
+        `Failed to resolve ride state for GPS authorization: ${error.message}`
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
 }

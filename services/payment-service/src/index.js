@@ -16,15 +16,14 @@ async function bootstrap() {
   await ensureTransactionIndexes(env);
 
   const app = createApp(env);
-  const server = startServer(app, env);
+  const runtime = await startServer(app, env);
 
   async function shutdown(signal) {
     console.log(`[payment-service] received ${signal}, shutting down...`);
-    server.close(async () => {
-      await closePublisher();
-      await closeMongo();
-      process.exit(0);
-    });
+    await runtime.close();
+    await closePublisher();
+    await closeMongo();
+    process.exit(0);
   }
 
   process.on('SIGINT', () => shutdown('SIGINT'));

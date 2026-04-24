@@ -60,3 +60,4 @@ markitdown/
 *.docx
 ~$*.docx
 CAB-BOOKING-SYSTEM.docx
+infra/mtls/dev-certs/

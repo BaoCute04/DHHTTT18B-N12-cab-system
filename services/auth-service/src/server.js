@@ -1,12 +1,16 @@
 const { createApp } = require('./app');
 const { loadEnv } = require('./config/env');
+const { startServiceServers } = require('../../../platform/node/start-servers.cjs');
 
-function startServer() {
+async function startServer() {
     const env = loadEnv();
     const app = createApp({ env });
-
-    app.listen(env.port, () => {
-        console.log(`Auth service listening on ${env.port}`);
+    return startServiceServers({
+        app,
+        env,
+        publicPort: env.port,
+        serviceName: 'auth-service',
+        logger: console,
     });
 }
 

@@ -6,8 +6,10 @@ import { getResilienceProfileForService } from "../architecture/resilience-topol
 import { getSecurityProfileForService } from "../architecture/security-topology.js";
 import { getServiceManifest } from "../architecture/service-manifests.js";
 import { bootstrapBroker } from "./broker.js";
+import startServersModule from "./start-servers.cjs";
 
 export async function startService(serviceKey, configureApp) {
+  const { startServiceServers } = startServersModule;
   const manifest = getServiceManifest(serviceKey);
 
   if (!manifest) {
@@ -115,7 +117,11 @@ export async function startService(serviceKey, configureApp) {
     });
   });
 
-  app.listen(port, () => {
-    console.log(`[${manifest.key}] listening on port ${port}`);
+  await startServiceServers({
+    app,
+    env: process.env,
+    publicPort: port,
+    serviceName: manifest.key,
+    logger: console
   });
 }

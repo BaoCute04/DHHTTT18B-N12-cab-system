@@ -3,6 +3,7 @@ import { bootstrapBroker } from "../../../platform/node/broker.js";
 import { getServiceManifest } from "../../../platform/architecture/service-manifests.js";
 import { serviceConfig } from "./config.js";
 import { requestContextMiddleware } from "./lib/request-context.js";
+import { authContextMiddleware } from "./middleware/auth-context.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { createUserRepository } from "./repositories/create-user-repository.js";
 import { createUserRoutes } from "./routes/user-routes.js";
@@ -17,6 +18,7 @@ export async function createApp() {
 
   app.use(express.json());
   app.use(requestContextMiddleware);
+  app.use(authContextMiddleware);
   app.use(createUserRoutes({
     broker,
     repository,

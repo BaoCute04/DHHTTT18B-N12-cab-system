@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import promClient from 'prom-client'; // Thư viện Metrics
 import 'dotenv/config';
+import startServersModule from '../../../platform/node/start-servers.cjs';
 
 import pricingRoutes from './routes/pricingRoutes.js';
 import { logger } from './utils/logger.js';
@@ -10,6 +11,7 @@ import { logger } from './utils/logger.js';
 const app = express();
 const PORT = process.env.PORT || 3101;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/cab_booking_pricing';
+const { startServiceServers } = startServersModule;
 
 // Cấu hình thu thập Metrics mặc định cho Prometheus (RAM, CPU, Event Loop...)
 const collectDefaultMetrics = promClient.collectDefaultMetrics;
@@ -53,6 +55,15 @@ app.use((req, res) => {
     res.status(404).json({ success: false, message: "Endpoint không tồn tại" });
 });
 
-app.listen(PORT, () => {
-    logger.info(`🚀 Pricing Service đang chạy tại cổng ${PORT}`);
+const runtime = await startServiceServers({
+    app,
+    env: process.env,
+    publicPort: PORT,
+    serviceName: 'pricing-service',
+    logger,
 });
+
+logger.info(`🚀 Pricing Service đang chạy tại cổng ${PORT}`);
+if (runtime.internalPort) {
+    logger.info(`🔐 Pricing Service mTLS nội bộ tại cổng ${runtime.internalPort}`);
+}

@@ -1,4 +1,5 @@
 import { MongoClient } from "mongodb";
+import { readSecret } from "./config/read-secret.js";
 
 const DEFAULT_DB_NAME = "cab_booking";
 const DEFAULT_COLLECTION_NAME = "notifications";
@@ -220,7 +221,7 @@ export class MongoNotificationRepository {
 export async function createNotificationRepository({
   repository,
   logger = console,
-  mongoUri = process.env.NOTIFICATION_MONGODB_URI,
+  mongoUri = readSecret("NOTIFICATION_MONGODB_URI", ""),
   dbName = process.env.NOTIFICATION_MONGODB_DB || DEFAULT_DB_NAME,
   collectionName = process.env.NOTIFICATION_MONGODB_COLLECTION || DEFAULT_COLLECTION_NAME,
   required = String(process.env.NOTIFICATION_MONGODB_REQUIRED || "").trim().toLowerCase() === "true"

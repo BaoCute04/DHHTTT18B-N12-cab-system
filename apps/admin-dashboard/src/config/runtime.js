@@ -31,7 +31,7 @@ const runtimeConfig = readRuntimeConfig();
 
 export const isStandaloneMode = normalizeBoolean(
   runtimeConfig.STANDALONE_MODE,
-  import.meta.env.VITE_STANDALONE_MODE !== "false"
+  import.meta.env.VITE_STANDALONE_MODE === "true"
 );
 
 const mockSessionsByRole = {

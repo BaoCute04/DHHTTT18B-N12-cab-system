@@ -122,7 +122,9 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO role_permissions (role, permission) VALUES
 ('customer', 'ride:read'),
+('customer', 'ride:write'),
 ('driver', 'ride:read'),
+('driver', 'ride:write'),
 ('driver', 'location:update:assigned'),
 ('admin', 'admin:all')
 ON CONFLICT DO NOTHING;

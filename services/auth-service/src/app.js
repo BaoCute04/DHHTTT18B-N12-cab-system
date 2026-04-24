@@ -27,6 +27,7 @@ const { createAdminAuthRoutes } = require('./routes/admin-auth.routes');
 const { createPublicAuthRoutes } = require('./routes/public-auth.routes');
 const { createSessionRoutes } = require('./routes/session.routes');
 const { createJwksRoutes } = require('./routes/jwks.routes');
+const { createMtlsFetch } = require('../../../platform/node/mtls-client.cjs');
 const { requestIdMiddleware } = require('./middleware/request-id.middleware');
 const { configureAuthRateLimit } = require('./middleware/auth-rate-limit.middleware');
 const { errorHandlerMiddleware } = require('./middleware/error-handler.middleware');
@@ -42,6 +43,7 @@ function buildSuccessEnvelope(data, requestId) {
 
 function createApp(options = {}) {
     const env = options.env || loadEnv();
+    const fetchImpl = options.fetchImpl || createMtlsFetch({ env, prefix: 'INTERNAL_TLS' });
     const security = buildSecurityConfig(env);
     configureRedisKeyConventions(security.redisKeys);
     const postgresPool = options.postgresPool || getPostgresPool(env);
@@ -61,6 +63,7 @@ function createApp(options = {}) {
             notificationBaseUrl: env.notificationService.baseUrl,
             timeoutMs: env.notificationService.timeoutMs,
             requestIdHeader: env.requestIdHeader,
+            fetchImpl,
         });
     const bootstrapService =
         options.bootstrapService ||
@@ -70,6 +73,7 @@ function createApp(options = {}) {
             userServiceTimeoutMs: env.userService.timeoutMs,
             driverServiceTimeoutMs: env.driverService.timeoutMs,
             requestIdHeader: env.requestIdHeader,
+            fetchImpl,
         });
     const sessionService =
         options.sessionService ||

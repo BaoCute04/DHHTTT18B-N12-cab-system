@@ -1,3 +1,6 @@
 const { startServer } = require('./src/server');
 
-startServer();
+startServer().catch((error) => {
+  console.error('[auth-service] startup failed', error);
+  process.exit(1);
+});

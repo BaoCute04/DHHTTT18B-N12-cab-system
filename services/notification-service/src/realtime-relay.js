@@ -1,10 +1,11 @@
 import { startNotificationEventConsumer } from "./kafka-consumer.js";
+import { readSecret } from "./config/read-secret.js";
 
 const DEFAULT_TOPICS = "driver.location.updated,ride.status.changed,driver.assigned,ride.assigned";
 
 export async function startRealtimeRelay({
   gatewayRealtimePublishUrl = process.env.GATEWAY_REALTIME_PUBLISH_URL || "http://api-gateway:3000/internal/realtime/publish",
-  internalKey = process.env.REALTIME_INTERNAL_KEY || "",
+  internalKey = readSecret("REALTIME_INTERNAL_KEY", ""),
   fetchImpl = globalThis.fetch,
   logger = console
 } = {}) {

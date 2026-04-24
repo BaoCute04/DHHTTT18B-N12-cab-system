@@ -8,6 +8,9 @@ import { createGatewayServer } from "../src/server.js";
 
 const ISSUER = "cab-auth-service";
 const AUDIENCE = "cab-api";
+const CUSTOMER_1_ID = "11111111-1111-4111-8111-111111111111";
+const DRIVER_1_ID = "22222222-2222-4222-8222-222222222222";
+const DRIVER_2_ID = "33333333-3333-4333-8333-333333333333";
 
 test("websocket handshake rejects missing token", async (t) => {
   const runtime = await startRuntime(t);
@@ -21,9 +24,10 @@ test("websocket handshake rejects missing token", async (t) => {
 test("websocket authenticates through Auth JWKS plus /me and supports outbound publish hook", async (t) => {
   const runtime = await startRuntime(t);
   const token = await runtime.auth.signToken({
-    sub: "driver-1",
+    sub: "22222222-2222-4222-8222-222222222222",
     role: "driver",
-    roles: ["driver"]
+    roles: ["driver"],
+    permissions: ["location:update:assigned"]
   });
 
   const socket = await connectWebSocket(`${runtime.wsUrl}/realtime?token=${token}`);
@@ -35,7 +39,7 @@ test("websocket authenticates through Auth JWKS plus /me and supports outbound p
   assert.equal(runtime.realtimeHub.getConnectionSummary().totalConnections, 1);
   assert.equal(runtime.auth.meCalls.length, 1);
 
-  const publishedCount = runtime.realtimeHub.publishToUser("driver-1", {
+  const publishedCount = runtime.realtimeHub.publishToUser("22222222-2222-4222-8222-222222222222", {
     type: "ride.assigned",
     payload: {
       rideId: "ride-1"
@@ -50,13 +54,13 @@ test("websocket authenticates through Auth JWKS plus /me and supports outbound p
   await once(socket.client, "close");
   await waitFor(() => runtime.realtimeHub.getConnectionSummary().totalConnections === 0);
   assert.equal(runtime.realtimeHub.getConnectionSummary().totalConnections, 0);
-  assert.equal(connectedMessage.userId, "driver-1");
+  assert.equal(connectedMessage.userId, "22222222-2222-4222-8222-222222222222");
 });
 
 test("websocket rejects GPS updates from non-driver actors", async (t) => {
   const runtime = await startRuntime(t);
   const token = await runtime.auth.signToken({
-    sub: "customer-1",
+    sub: "11111111-1111-4111-8111-111111111111",
     role: "customer",
     roles: ["customer"]
   });
@@ -75,9 +79,10 @@ test("websocket rejects GPS updates from non-driver actors", async (t) => {
 test("websocket rate limits driver location updates", async (t) => {
   const runtime = await startRuntime(t);
   const token = await runtime.auth.signToken({
-    sub: "driver-1",
+    sub: "22222222-2222-4222-8222-222222222222",
     role: "driver",
-    roles: ["driver"]
+    roles: ["driver"],
+    permissions: ["location:update:assigned"]
   });
 
   const socket = await connectWebSocket(`${runtime.wsUrl}/realtime?token=${token}`);
@@ -106,9 +111,10 @@ test("websocket forwards GPS updates to ride-service bridge", async (t) => {
     }
   });
   const token = await runtime.auth.signToken({
-    sub: "driver-1",
+    sub: "22222222-2222-4222-8222-222222222222",
     role: "driver",
-    roles: ["driver"]
+    roles: ["driver"],
+    permissions: ["location:update:assigned"]
   });
 
   const socket = await connectWebSocket(`${runtime.wsUrl}/realtime?token=${token}`);
@@ -126,10 +132,66 @@ test("websocket forwards GPS updates to ride-service bridge", async (t) => {
   assert.deepEqual(forwardedPayloads[0], message.payload);
 });
 
+test("websocket rejects GPS updates when authoritative ride state is not active", async (t) => {
+  const runtime = await startRuntime(t, {
+    resolveRideAccessContext: async () => ({
+      rideId: "ride-1",
+      driverId: "22222222-2222-4222-8222-222222222222",
+      status: "CANCELLED"
+    })
+  });
+  const token = await runtime.auth.signToken({
+    sub: "22222222-2222-4222-8222-222222222222",
+    role: "driver",
+    roles: ["driver"],
+    permissions: ["location:update:assigned"]
+  });
+
+  const socket = await connectWebSocket(`${runtime.wsUrl}/realtime?token=${token}`);
+  t.after(() => socket.client.close());
+  await socket.nextMessage();
+
+  socket.client.send(JSON.stringify(buildDriverLocationUpdate({
+    driverId: "22222222-2222-4222-8222-222222222222"
+  })));
+
+  const errorMessage = await socket.nextMessage();
+  assert.equal(errorMessage.type, "error");
+  assert.match(errorMessage.message, /not allowed while ride is CANCELLED/);
+});
+
+test("websocket rejects GPS updates when authenticated driver is not assigned driver", async (t) => {
+  const runtime = await startRuntime(t, {
+    resolveRideAccessContext: async () => ({
+      rideId: "ride-1",
+      driverId: "33333333-3333-4333-8333-333333333333",
+      status: "ACTIVE"
+    })
+  });
+  const token = await runtime.auth.signToken({
+    sub: "22222222-2222-4222-8222-222222222222",
+    role: "driver",
+    roles: ["driver"],
+    permissions: ["location:update:assigned"]
+  });
+
+  const socket = await connectWebSocket(`${runtime.wsUrl}/realtime?token=${token}`);
+  t.after(() => socket.client.close());
+  await socket.nextMessage();
+
+  socket.client.send(JSON.stringify(buildDriverLocationUpdate({
+    driverId: "22222222-2222-4222-8222-222222222222"
+  })));
+
+  const errorMessage = await socket.nextMessage();
+  assert.equal(errorMessage.type, "error");
+  assert.match(errorMessage.message, /not the assigned driver/);
+});
+
 test("internal realtime publish endpoint pushes event to connected users", async (t) => {
   const runtime = await startRuntime(t);
   const token = await runtime.auth.signToken({
-    sub: "driver-1",
+    sub: "22222222-2222-4222-8222-222222222222",
     role: "driver",
     roles: ["driver"]
   });
@@ -145,7 +207,7 @@ test("internal realtime publish endpoint pushes event to connected users", async
       "x-realtime-internal-key": runtime.realtimeInternalKey
     },
     body: JSON.stringify({
-      userIds: ["driver-1"],
+      userIds: ["22222222-2222-4222-8222-222222222222"],
       event: {
         type: "driver.location.updated",
         payload: {
@@ -173,7 +235,8 @@ async function startRuntime(t, options = {}) {
       REALTIME_INTERNAL_KEY: realtimeInternalKey
     },
     storeMode: "memory",
-    forwardDriverLocationUpdate: options.forwardDriverLocationUpdate
+    forwardDriverLocationUpdate: options.forwardDriverLocationUpdate,
+    resolveRideAccessContext: options.resolveRideAccessContext
   });
 
   runtime.server.listen(0);
@@ -226,8 +289,8 @@ async function createAuthServer() {
           subjectId: payload.sub,
           role: payload.role,
           roles: payload.roles || (payload.role ? [payload.role] : []),
-          scopes: [],
-          permissions: []
+          scopes: payload.scopes || [],
+          permissions: payload.permissions || []
         }
       });
     }
@@ -306,7 +369,7 @@ function connectWebSocket(url) {
   });
 }
 
-function buildDriverLocationUpdate() {
+function buildDriverLocationUpdate(overrides = {}) {
   return {
     type: "driver.location.update",
     payload: {
@@ -315,7 +378,8 @@ function buildDriverLocationUpdate() {
       rideStatus: "ACTIVE",
       latitude: 10.77,
       longitude: 106.69,
-      recordedAt: "2026-04-08T09:30:00.000Z"
+      recordedAt: "2026-04-08T09:30:00.000Z",
+      ...overrides
     }
   };
 }
