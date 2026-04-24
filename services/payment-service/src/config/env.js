@@ -13,6 +13,15 @@ function toInt(value, fallback) {
 }
 
 export function getEnv() {
+  const kafkaBrokers = String(process.env.KAFKA_BROKERS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const kafkaEnabled =
+    process.env.KAFKA_ENABLED == null
+      ? kafkaBrokers.length > 0
+      : String(process.env.KAFKA_ENABLED || 'false').toLowerCase() === 'true';
+
   return {
     port: toInt(process.env.PORT, DEFAULT_PORT),
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -27,12 +36,9 @@ export function getEnv() {
       baseDelayMs: toInt(process.env.PAYMENT_BASE_DELAY_MS, DEFAULT_BASE_DELAY_MS),
       maxDelayMs: toInt(process.env.PAYMENT_MAX_DELAY_MS, MAX_BACKOFF_DELAY_MS)
     },
-    kafkaEnabled: String(process.env.KAFKA_ENABLED || 'false').toLowerCase() === 'true',
+    kafkaEnabled,
     kafkaClientId: process.env.KAFKA_CLIENT_ID || 'payment-service',
-    kafkaBrokers: String(process.env.KAFKA_BROKERS || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean),
+    kafkaBrokers,
     paymentTopic: process.env.KAFKA_PAYMENT_TOPIC || 'payment-events'
   };
 }

@@ -1,5 +1,6 @@
 import { Kafka } from 'kafkajs';
 import { applyPaymentEvent } from '../store/rideProjectionStore.js';
+import { syncPaymentState } from '../services/ride.service.js';
 
 let consumer;
 
@@ -29,6 +30,11 @@ export async function startPaymentConsumer(env) {
       const payload = JSON.parse(message.value.toString());
       if (!ACCEPTED_TOPICS.has(payload.topic)) return;
       const projection = applyPaymentEvent(payload);
+      await syncPaymentState({
+        rideId: payload.rideId,
+        paymentId: payload.paymentId,
+        status: payload.status,
+      });
       console.log(`[ride-service] applied event ${payload.topic} for ride ${projection.rideId}`);
     }
   });

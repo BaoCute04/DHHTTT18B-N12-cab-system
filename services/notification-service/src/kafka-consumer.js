@@ -17,7 +17,7 @@ function parseTopics(rawTopics) {
 export async function startNotificationEventConsumer({
   serviceKey,
   rawBrokers = process.env.KAFKA_BROKERS,
-  rawTopics = process.env.NOTIFICATION_EVENT_TOPICS || "driver.assigned,ride.assigned,ride.status.changed,payment.failed,payment.success,payment.completed",
+  rawTopics = process.env.NOTIFICATION_EVENT_TOPICS || "driver.assigned,ride.assigned,ride.status.changed,payment-events",
   groupId = process.env.NOTIFICATION_CONSUMER_GROUP || `${serviceKey}-consumer`,
   onMessage,
   logger = console
@@ -52,7 +52,7 @@ export async function startNotificationEventConsumer({
       await consumer.subscribe({ topic, fromBeginning: false });
     }
 
-    await consumer.run({
+      await consumer.run({
       eachMessage: async ({ topic, message }) => {
         const payload = safeParseJson(message.value?.toString("utf8"));
 
@@ -62,7 +62,8 @@ export async function startNotificationEventConsumer({
         }
 
         await onMessage({
-          topic,
+          topic: payload.topic || topic,
+          rawTopic: topic,
           key: message.key?.toString("utf8") || null,
           payload
         });

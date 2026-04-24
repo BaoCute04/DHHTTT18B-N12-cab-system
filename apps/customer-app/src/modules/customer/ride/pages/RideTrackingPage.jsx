@@ -5,9 +5,9 @@ import { RealtimeContext } from "@app/RealtimeProvider.jsx";
 
 export function RideTrackingPage() {
   const navigate = useNavigate();
-  const { ride, setRide, destination } = useBooking();
+  const { ride, setRide, destination, setPayment } = useBooking();
   const { connection } = useContext(RealtimeContext);
-  const [eta, setEta] = useState(10);
+  const [eta, setEta] = useState(Number(ride?.etaMinutes || 10));
 
   useEffect(() => {
     if (!ride) {
@@ -15,20 +15,53 @@ export function RideTrackingPage() {
       return;
     }
 
-    if (connection) {
-       // Status check
-       if (ride.status === "COMPLETED") {
-          navigate("/customer/review/rating");
-       }
+    const socket = connection?.socket;
+    if (!socket?.addEventListener) {
+      return;
     }
-  }, [ride, navigate, connection]);
+
+    const handleMessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        const payload = message.payload || {};
+
+        if (payload.rideId && payload.rideId !== ride.rideId) {
+          return;
+        }
+
+        if (message.type === "ride.status.changed" || message.type === "driver.location.updated") {
+          setRide((currentRide) => ({ ...(currentRide || {}), ...payload }));
+          if (payload.etaMinutes != null) {
+            setEta(Number(payload.etaMinutes));
+          }
+        }
+
+        if (message.type === "payment.completed") {
+          setPayment(payload);
+          navigate("/customer/payment/result");
+        }
+
+        if (message.type === "payment.failed") {
+          setPayment(payload);
+          navigate("/customer/payment/method");
+        }
+      } catch (error) {
+        console.error("Realtime parse error:", error);
+      }
+    };
+
+    socket.addEventListener("message", handleMessage);
+    return () => {
+      socket.removeEventListener?.("message", handleMessage);
+    };
+  }, [connection?.socket, navigate, ride, setPayment, setRide]);
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden relative">
         <div className="absolute top-0 inset-x-0 px-6 pt-6 z-10">
-          <h1 className="text-lg font-semibold text-slate-900">Đang di chuyển</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Tài xế đang đưa bạn đến điểm đến</p>
+          <h1 className="text-lg font-semibold text-slate-900">Dang di chuyen</h1>
+          <p className="text-xs text-slate-500 mt-0.5">Tai xe dang dua ban den diem den</p>
         </div>
 
         <div className="absolute inset-x-0 top-[80px] bottom-[320px] bg-slate-200 flex flex-col items-center justify-center">
@@ -48,32 +81,32 @@ export function RideTrackingPage() {
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">🚗</div>
             <div className="flex-1">
-              <p className="text-sm font-semibold">Đang trên đường</p>
-              <p className="text-xs text-slate-500">Còn khoảng {eta} phút đến điểm đến</p>
+              <p className="text-sm font-semibold">Dang tren duong</p>
+              <p className="text-xs text-slate-500">Con khoang {eta || 0} phut den diem den</p>
             </div>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4 mb-6">
             <div className="flex justify-between text-sm mb-2">
-              <span>Khoảng cách còn lại</span>
-              <span>3.1 km</span>
+              <span>Trang thai</span>
+              <span>{ride?.status || "IN_PROGRESS"}</span>
             </div>
             <div className="flex justify-between text-sm mb-2">
-              <span>Thời gian dự kiến</span>
-              <span>{eta} phút</span>
+              <span>Thoi gian du kien</span>
+              <span>{eta || 0} phut</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
-              <span>Điểm đến</span>
-              <span className="truncate ml-4">{destination?.address || "Vincom Đồng Khởi"}</span>
+              <span>Diem den</span>
+              <span className="truncate ml-4">{ride?.destination?.address || destination?.address || "Dang cap nhat"}</span>
             </div>
           </div>
 
           <div className="flex gap-3 mb-4">
             <button className="flex-1 rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]">
-              Gọi tài xế
+              Goi tai xe
             </button>
             <button className="flex-1 rounded-xl border border-red-300 py-3 text-sm font-medium text-red-600 active:scale-[0.98]">
-              Trợ giúp
+              Tro giup
             </button>
           </div>
         </div>

@@ -11,7 +11,7 @@ async function handleResponse(response) {
 
 export const authApi = {
   requestOtp: async (phone) => {
-    const res = await request("/auth/login/otp/request", {
+    const res = await request("/api/v1/auth/login/otp/request", {
       method: "POST",
       body: JSON.stringify({
         role: "driver",
@@ -23,7 +23,7 @@ export const authApi = {
   },
 
   verifyOtp: async (phone, otp) => {
-    const res = await request("/auth/login/otp/verify", {
+    const res = await request("/api/v1/auth/login/otp/verify", {
       method: "POST",
       body: JSON.stringify({
         role: "driver",
@@ -35,14 +35,14 @@ export const authApi = {
   },
 
   getMe: async () => {
-    const res = await request("/auth/me", {
+    const res = await request("/api/v1/auth/me", {
       method: "GET"
     });
     return handleResponse(res);
   },
 
   logout: async () => {
-    const res = await request("/auth/logout", {
+    const res = await request("/api/v1/auth/logout", {
       method: "POST"
     });
     return handleResponse(res);

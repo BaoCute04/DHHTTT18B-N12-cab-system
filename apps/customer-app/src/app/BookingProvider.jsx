@@ -9,6 +9,7 @@ export function BookingProvider({ children }) {
   const [quote, setQuote] = useState(null);
   const [booking, setBooking] = useState(null);
   const [ride, setRide] = useState(null);
+  const [payment, setPayment] = useState(null);
 
   const resetBooking = useCallback(() => {
     setPickup(null);
@@ -17,6 +18,7 @@ export function BookingProvider({ children }) {
     setQuote(null);
     setBooking(null);
     setRide(null);
+    setPayment(null);
   }, []);
 
   const value = useMemo(
@@ -33,9 +35,11 @@ export function BookingProvider({ children }) {
       setBooking,
       ride,
       setRide,
+      payment,
+      setPayment,
       resetBooking
     }),
-    [pickup, destination, selectedRideOption, quote, booking, ride, resetBooking]
+    [pickup, destination, selectedRideOption, quote, booking, ride, payment, resetBooking]
   );
 
   return <BookingContext.Provider value={value}>{children}</BookingContext.Provider>;

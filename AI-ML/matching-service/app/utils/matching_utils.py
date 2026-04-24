@@ -1,5 +1,7 @@
 """Utility helpers for hard constraints, feature enrichment, and fallback scoring."""
 import logging
+from datetime import datetime, timezone
+from uuid import uuid4
 from typing import List, Optional
 
 from app.database import get_redis
@@ -87,15 +89,39 @@ def pick_best_candidate(candidates: list[dict]) -> dict:
     return best
 
 
-def build_assignment_event(ride_id: str, best_driver: dict) -> dict:
+def build_assignment_event(
+    ride_id: str,
+    best_driver: dict,
+    *,
+    booking_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    pickup: Optional[dict] = None,
+    destination: Optional[dict] = None,
+    price_snapshot: Optional[float] = None,
+    vehicle_type: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    status: str = "WAITING_FOR_ACCEPTANCE",
+) -> dict:
     return {
+        "eventId": str(uuid4()),
+        "eventType": "RideAssigned",
+        "type": "RideAssigned",
         "rideId": ride_id,
+        "bookingId": booking_id or ride_id,
+        "userId": user_id,
         "driverId": best_driver["driver_id"],
         "confidenceScore": best_driver["confidence_score"],
         "matchingReason": best_driver["matching_reason"],
         "decisionSource": best_driver.get("decision_source", "ai-driver-matching"),
         "modelVersion": best_driver.get("model_version"),
         "assignedAt": best_driver.get("assigned_at"),
+        "timestamp": best_driver.get("assigned_at") or datetime.now(tz=timezone.utc).isoformat(),
+        "pickup": pickup,
+        "destination": destination,
+        "priceSnapshot": price_snapshot,
+        "vehicleType": vehicle_type,
+        "paymentMethod": payment_method,
+        "status": status,
         "source": "ai-driver-matching",
     }
 

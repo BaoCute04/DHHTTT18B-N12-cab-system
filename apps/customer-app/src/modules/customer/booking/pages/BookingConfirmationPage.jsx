@@ -3,47 +3,64 @@ import { useNavigate } from "react-router-dom";
 import { useBooking } from "@app/BookingProvider.jsx";
 import { useAuth } from "@app/AuthProvider.jsx";
 import { request } from "@/services/httpClient.js";
-import { v4 as uuidv4 } from 'uuid';
+
+function resolveSessionUserId(session) {
+  return (
+    session?.user?.subject_id ||
+    session?.user?.subjectId ||
+    session?.user?.userId ||
+    session?.user?.id ||
+    session?.subjectId ||
+    session?.subject_id ||
+    null
+  );
+}
 
 export function BookingConfirmationPage() {
   const navigate = useNavigate();
   const { session } = useAuth();
-  const { pickup, destination, selectedRideOption, setBooking } = useBooking();
+  const { pickup, destination, selectedRideOption, quote, setBooking } = useBooking();
   const [loading, setLoading] = useState(false);
 
+  const activeQuote = selectedRideOption || quote;
+
   const handleCreateBooking = async () => {
-    if (!pickup || !destination || !selectedRideOption) return;
+    if (!pickup || !destination || !activeQuote) {
+      return;
+    }
+
+    const userId = resolveSessionUserId(session);
+    if (!userId) {
+      alert("Khong tim thay danh tinh nguoi dung. Vui long dang nhap lai.");
+      navigate("/customer/auth/login");
+      return;
+    }
 
     setLoading(true);
     try {
-      const idempotencyKey = uuidv4();
-      
-      // Gateway requires a valid UUID for userId
-      // If session doesn't have a real UUID, we generate a stable one or a random one for testing
-      const userId = session?.user?.userId || uuidv4();
-
+      const idempotencyKey = `booking-${activeQuote.quoteId || Date.now()}`;
       const payload = {
-        userId: userId,
+        userId,
         pickup: {
           lat: pickup.lat,
           lng: pickup.lng,
-          address: (pickup.address || "Vị trí đã chọn").substring(0, 250)
+          address: (pickup.address || "Vi tri da chon").substring(0, 250)
         },
         drop: {
           lat: destination.lat,
           lng: destination.lng,
-          address: (destination.address || "Điểm đến").substring(0, 250)
+          address: (destination.address || "Diem den").substring(0, 250)
         },
-        vehicleType: selectedRideOption.id || "bike",
+        vehicleType: activeQuote.id || activeQuote.vehicleType || "bike",
         paymentMethod: "CASH",
-        distanceKm: selectedRideOption.distance > 0 ? selectedRideOption.distance : 0.1
+        distanceKm: activeQuote.distance > 0 ? activeQuote.distance : undefined,
+        quoteId: activeQuote.quoteId || undefined,
+        priceSnapshot: activeQuote.priceSnapshot || undefined
       };
-
-      console.log("[Booking] Sending payload to gateway:", payload);
 
       const response = await request("/api/v1/bookings", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Idempotency-Key": idempotencyKey
         },
@@ -51,22 +68,21 @@ export function BookingConfirmationPage() {
       });
 
       const result = await response.json();
-      if (result.success) {
-        setBooking(result.data);
-        navigate("/customer/booking/searching-driver");
-      } else {
-        console.error("[Booking] Gateway error:", result);
-        alert(result.message || "Không thể đặt xe. Vui lòng kiểm tra lại thông tin.");
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || "Khong the dat xe.");
       }
+
+      setBooking(result.data);
+      navigate("/customer/booking/searching-driver");
     } catch (error) {
       console.error("Booking error:", error);
-      alert("Đã có lỗi xảy ra khi kết nối đến máy chủ.");
+      alert(error.message || "Da co loi xay ra khi tao booking.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (!pickup || !destination || !selectedRideOption) {
+  if (!pickup || !destination || !activeQuote) {
     return null;
   }
 
@@ -74,18 +90,18 @@ export function BookingConfirmationPage() {
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col border-4 border-slate-900/5">
         <div className="px-6 pt-6 pb-4 border-b border-slate-50 flex items-center justify-between">
-          <h1 className="text-lg font-bold text-slate-900">Xác nhận chuyến đi</h1>
-          <button onClick={() => navigate(-1)} className="text-slate-400">✕</button>
+          <h1 className="text-lg font-bold text-slate-900">Xac nhan chuyen di</h1>
+          <button onClick={() => navigate(-1)} className="text-slate-400">×</button>
         </div>
 
         <div className="flex-1 px-6 py-4 overflow-y-auto space-y-6">
           <div className="bg-slate-50 rounded-2xl p-4 relative">
             <div className="absolute left-[26px] top-[40px] bottom-[40px] border-l-2 border-dashed border-slate-300"></div>
-            
+
             <div className="flex gap-4 relative mb-6">
               <div className="w-4 h-4 rounded-full bg-slate-900 border-4 border-white shadow-sm z-10"></div>
               <div className="flex-1 overflow-hidden">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Điểm đón</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Diem don</p>
                 <p className="text-sm font-bold text-slate-900 truncate">{pickup.address}</p>
               </div>
             </div>
@@ -93,40 +109,42 @@ export function BookingConfirmationPage() {
             <div className="flex gap-4 relative">
               <div className="w-4 h-4 rounded-full bg-red-500 border-4 border-white shadow-sm z-10"></div>
               <div className="flex-1 overflow-hidden">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Điểm đến</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Diem den</p>
                 <p className="text-sm font-bold text-slate-900 truncate">{destination.address}</p>
               </div>
             </div>
           </div>
 
           <div className="space-y-4">
-             <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl">
-                   {selectedRideOption.icon || "🚗"}
-                </div>
-                <div className="flex-1">
-                   <p className="text-sm font-bold text-slate-900">{selectedRideOption.type}</p>
-                   <p className="text-xs text-slate-400">Dịch vụ tiêu chuẩn</p>
-                </div>
-                <div className="text-right">
-                   <p className="text-sm font-bold text-slate-900">{selectedRideOption.price.toLocaleString()}đ</p>
-                </div>
-             </div>
+            <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100">
+              <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl">
+                {activeQuote.icon || "🚗"}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-900">{activeQuote.type || activeQuote.vehicleType}</p>
+                <p className="text-xs text-slate-400">
+                  Quote #{activeQuote.quoteId || "N/A"} • Surge x{Number(activeQuote.surgeMultiplier || 1).toFixed(1)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-bold text-slate-900">{Number(activeQuote.price || activeQuote.priceSnapshot?.amount || 0).toLocaleString("vi-VN")}d</p>
+              </div>
+            </div>
 
-             <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl">💵</div>
-                <div className="flex-1">
-                   <p className="text-sm font-bold text-slate-900">Thanh toán</p>
-                   <p className="text-xs text-slate-400">Tiền mặt</p>
-                </div>
-             </div>
+            <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100">
+              <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl">💵</div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-900">Thanh toan</p>
+                <p className="text-xs text-slate-400">Tien mat • se duoc xu ly tu payment-service</p>
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="p-6 bg-white border-t border-slate-50">
           <div className="flex justify-between mb-4 px-2">
-             <span className="text-sm text-slate-500 font-medium">Tổng số tiền</span>
-             <span className="text-lg font-bold text-slate-900">{selectedRideOption.price.toLocaleString()}đ</span>
+            <span className="text-sm text-slate-500 font-medium">Tong so tien</span>
+            <span className="text-lg font-bold text-slate-900">{Number(activeQuote.price || activeQuote.priceSnapshot?.amount || 0).toLocaleString("vi-VN")}d</span>
           </div>
 
           <button
@@ -139,10 +157,10 @@ export function BookingConfirmationPage() {
             {loading ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Đang xử lý...
+                Dang xu ly...
               </>
             ) : (
-              "Xác nhận đặt xe"
+              "Xac nhan dat xe"
             )}
           </button>
         </div>

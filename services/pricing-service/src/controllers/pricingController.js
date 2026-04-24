@@ -14,12 +14,22 @@ const formatResponse = (message, data, req) => ({
     }
 });
 
+const PUBLIC_TO_RULE_VEHICLE_TYPE = {
+    bike: 'bike',
+    car: 'standard',
+    car_plus: 'suv',
+    standard: 'standard',
+    premium: 'premium',
+    suv: 'suv'
+};
+
 export const getQuote = async (req, res) => {
     const reqId = req.headers['x-request-id'] || uuidv4();
     try {
         // 1. Nhận tọa độ điểm đón + điểm trả + thông tin cuốc xe
         const { pickupLat, pickupLng, dropLat, dropLng, vehicleType } = req.body;
         let { distanceKm, durationMin } = req.body;
+        const normalizedVehicleType = PUBLIC_TO_RULE_VEHICLE_TYPE[vehicleType] || 'standard';
 
         // [NHIỆM VỤ 1] Tự động tính Distance/ETA nếu chỉ có tọa độ
         if (!distanceKm || !durationMin) {
@@ -41,7 +51,7 @@ export const getQuote = async (req, res) => {
         }
 
         // 2. Lấy giá cơ bản từ DB
-        let rule = await PricingRule.findOne({ vehicleType }) || await PricingRule.findOne({ vehicleType: 'standard' });
+        let rule = await PricingRule.findOne({ vehicleType: normalizedVehicleType }) || await PricingRule.findOne({ vehicleType: 'standard' });
         if (!rule) throw new Error('Chưa cấu hình giá trong DB');
 
         const baseAmount = rule.baseFare + (distanceKm * rule.perKm) + (durationMin * rule.perMinute);
@@ -72,7 +82,7 @@ export const getQuote = async (req, res) => {
             amount: finalAmount,
             surgeMultiplier,
             surgeSource,
-            vehicleType: rule.vehicleType,
+            vehicleType,
             distanceKm,
             durationMin,
             pickupLat,
@@ -91,7 +101,7 @@ export const getQuote = async (req, res) => {
                 distance: `${distanceKm} km`,
                 duration: `${durationMin} mins`,
                 surgeMultiplier: surgeMultiplier,
-                vehicleType: rule.vehicleType,
+                vehicleType,
                 metrics: {
                     supply: supplyCount,
                     demand: demandCount,

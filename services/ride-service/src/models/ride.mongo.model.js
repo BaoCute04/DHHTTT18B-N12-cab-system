@@ -36,6 +36,7 @@ const rideSchema = new Schema(
     // Financial Data
     quoteId: { type: String, default: null },
     priceSnapshot: { type: Number, default: 0 },
+    paymentMethod: { type: String, default: 'CASH' },
     paymentStatus: { type: String, default: 'PENDING' },
     paymentId: { type: String, default: null },
     pickup: { type: coordinateSchema, required: true },

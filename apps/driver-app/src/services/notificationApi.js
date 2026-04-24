@@ -10,7 +10,7 @@ async function handleResponse(response) {
 
 export const notificationApi = {
   getNotifications: async (userId) => {
-    const res = await request(`/notifications?userId=${userId}`, {
+    const res = await request(`/api/v1/notifications?userId=${userId}`, {
       method: "GET"
     });
     return handleResponse(res);

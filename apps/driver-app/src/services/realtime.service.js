@@ -7,12 +7,8 @@ export function createRealtimeConnection({ client, token, onOpen, onMessage, onE
   if (isStandaloneMode) {
     const mockSocket = {
       readyState: 1,
-      addEventListener: (type, listener) => {
-        console.log(`[Standalone] Added listener for ${type}`);
-      },
-      removeEventListener: (type, listener) => {
-        console.log(`[Standalone] Removed listener for ${type}`);
-      }
+      addEventListener: () => {},
+      removeEventListener: () => {},
     };
 
     queueMicrotask(() => {
@@ -21,9 +17,12 @@ export function createRealtimeConnection({ client, token, onOpen, onMessage, onE
 
     return {
       send(data) {
-        onMessage?.({ 
-          data: typeof data === "string" ? data : JSON.stringify(data) 
-        }, { mock: true, type: "message" });
+        onMessage?.(
+          {
+            data: typeof data === "string" ? data : JSON.stringify(data),
+          },
+          { mock: true, type: "message" }
+        );
       },
       close() {
         onClose?.({ mock: true, type: "close" });
@@ -32,25 +31,28 @@ export function createRealtimeConnection({ client, token, onOpen, onMessage, onE
         ...mockSocket,
         addEventListener: (type, listener) => {
           if (type === "message") {
-            // Simulate incoming ride request after 5s
             setTimeout(() => {
               listener({
                 data: JSON.stringify({
-                  type: "ride_requested",
+                  type: "ride.assigned",
                   payload: {
                     rideId: "ride-mock-999",
-                    pickup: { address: "123 Lê Lợi, Quận 1" },
-                    destination: { address: "Vincom Đồng Khởi, Quận 1" },
-                    estimatedFare: "45.000đ",
-                    distance: "2.5 km",
-                    duration: "8 phút"
-                  }
-                })
+                    bookingId: "ride-mock-999",
+                    driverId: "driver-123",
+                    userId: "customer-456",
+                    status: "WAITING_FOR_ACCEPTANCE",
+                    pickup: { lat: 10.7769, lng: 106.7009, address: "123 Le Loi, Quan 1" },
+                    destination: { lat: 10.7821, lng: 106.6953, address: "Vincom Dong Khoi, Quan 1" },
+                    priceSnapshot: { amount: 45000 },
+                    etaMinutes: 8,
+                    eventType: "RideAssigned",
+                  },
+                }),
               });
             }, 5000);
           }
-        }
-      }
+        },
+      },
     };
   }
 
@@ -79,6 +81,6 @@ export function createRealtimeConnection({ client, token, onOpen, onMessage, onE
     close() {
       socket.close();
     },
-    socket
+    socket,
   };
 }

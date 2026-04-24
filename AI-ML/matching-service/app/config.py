@@ -14,7 +14,8 @@ class Settings(BaseSettings):
 
     # Matching service
     kafka_bootstrap_servers: str = "localhost:9092"
-    ride_assigned_topic: str = "driver.assigned"
+    ride_assigned_topic: str = "ride.assigned"
+    legacy_driver_assigned_topic: str = "driver.assigned"
 
     class Config:
         env_file = ".env"

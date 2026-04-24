@@ -9,7 +9,7 @@ const router = express.Router();
 const quoteSchema = Joi.object({
     pickupAddress: Joi.string().optional(),
     destinationAddress: Joi.string().required(),
-    vehicleType: Joi.string().valid('bike', 'standard', 'premium', 'suv').required(),
+    vehicleType: Joi.string().valid('bike', 'car', 'car_plus', 'standard', 'premium', 'suv').required(),
     distanceKm: Joi.number().positive().optional(),
     durationMin: Joi.number().positive().optional(),
 

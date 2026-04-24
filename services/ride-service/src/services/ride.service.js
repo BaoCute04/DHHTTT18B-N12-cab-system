@@ -49,6 +49,29 @@ function serializeRide(ride) {
   return typeof ride.toJSON === 'function' ? ride.toJSON() : ride;
 }
 
+function normalizePaymentMethod(value) {
+  const normalized = String(value || 'cash').trim().toLowerCase();
+
+  if (normalized === 'credit_card') {
+    return 'card';
+  }
+
+  if (normalized === 'e_wallet') {
+    return 'wallet';
+  }
+
+  return normalized;
+}
+
+function extractRideAmount(ride) {
+  const rawAmount =
+    typeof ride?.priceSnapshot === 'number'
+      ? ride.priceSnapshot
+      : ride?.priceSnapshot?.amount;
+  const amount = Number(rawAmount);
+  return Number.isFinite(amount) ? Math.round(amount) : 0;
+}
+
 async function emitRideStatusChanged(ride, extra = {}) {
   if (!ride) {
     return;
@@ -74,14 +97,14 @@ async function emitRideStatusChanged(ride, extra = {}) {
   }
 }
 
-async function emitDriverAssigned(ride, extra = {}) {
+async function emitDriverAssigned(ride, extra = {}, topics = ['ride.assigned', 'driver.assigned']) {
   if (!ride) {
     return;
   }
 
   try {
-    await publishRideEvent('driver.assigned', {
-      eventType: 'DriverAssigned',
+    const payload = {
+      eventType: 'RideAssigned',
       rideId: ride.rideId,
       bookingId: ride.bookingId,
       userId: ride.userId,
@@ -89,11 +112,24 @@ async function emitDriverAssigned(ride, extra = {}) {
       status: ride.status,
       pickup: ride.pickup || null,
       destination: ride.destination || null,
+      priceSnapshot: ride.priceSnapshot || 0,
+      quoteId: ride.quoteId || null,
       updatedAt: ride.updatedAt,
       ...extra,
-    }, ride.driverId || ride.rideId);
+    };
+
+    for (const topic of topics) {
+      await publishRideEvent(
+        topic,
+        {
+          ...payload,
+          eventType: topic === 'driver.assigned' ? 'DriverAssigned' : payload.eventType,
+        },
+        ride.driverId || ride.rideId
+      );
+    }
   } catch (error) {
-    console.warn('[ride.service] failed to publish driver.assigned:', error.message);
+    console.warn('[ride.service] failed to publish assignment event:', error.message);
   }
 }
 
@@ -241,6 +277,7 @@ async function createRide(rideData) {
     destination: rideData.destination,
     priceSnapshot: rideData.priceSnapshot || 0,
     quoteId: rideData.quoteId || null,
+    paymentMethod: rideData.paymentMethod || 'CASH',
     status: rideData.status || RIDE_STATUS.SEARCHING,
     updatedAt: new Date().toISOString()
   };
@@ -269,7 +306,8 @@ async function createRide(rideData) {
   return savedRide;
 }
 
-async function assignDriver(rideId, driverId) {
+async function assignDriver(rideId, driverId, options = {}) {
+  const { publishAssignmentEvent = true, assignmentMetadata = {} } = options;
   const ride = await getRideById(rideId);
   if (!ride) {
     throw new Error('Ride not found');
@@ -279,8 +317,11 @@ async function assignDriver(rideId, driverId) {
     throw new Error('driverId is required');
   }
 
-  // Phase 4: Matching-service assigns a driver, but we wait for acceptance
   if (ride.status !== RIDE_STATUS.SEARCHING) {
+    if (ride.driverId === driverId) {
+      return ride;
+    }
+
     throw new Error(`Cannot assign driver to ride in ${ride.status} status`);
   }
 
@@ -289,7 +330,9 @@ async function assignDriver(rideId, driverId) {
     ride.status = RIDE_STATUS.WAITING_FOR_ACCEPTANCE;
     ride.updatedAt = new Date();
     await ride.save();
-    await emitDriverAssigned(ride);
+    if (publishAssignmentEvent) {
+      await emitDriverAssigned(ride, assignmentMetadata);
+    }
     await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
     return ride;
   }
@@ -297,7 +340,9 @@ async function assignDriver(rideId, driverId) {
   ride.driverId = driverId;
   ride.updateStatus(RIDE_STATUS.WAITING_FOR_ACCEPTANCE);
   await saveRide(ride);
-  await emitDriverAssigned(ride);
+  if (publishAssignmentEvent) {
+    await emitDriverAssigned(ride, assignmentMetadata);
+  }
   await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
   return ride;
 }
@@ -349,7 +394,7 @@ async function updateRideLocation(rideId, driverId, location) {
   }
 
   const allowedStatuses = new Set([
-    RIDE_STATUS.DRIVER_ASSIGNED,
+    RIDE_STATUS.ACCEPTED,
     RIDE_STATUS.DRIVER_ARRIVING,
     RIDE_STATUS.IN_PROGRESS
   ]);
@@ -368,7 +413,7 @@ async function updateRideLocation(rideId, driverId, location) {
     }
 
     if (
-      ride.status === RIDE_STATUS.DRIVER_ASSIGNED ||
+      ride.status === RIDE_STATUS.ACCEPTED ||
       ride.status === RIDE_STATUS.DRIVER_ARRIVING
     ) {
       ride.etaMinutes = await calculateETA(location, ride.pickup);
@@ -431,12 +476,12 @@ async function startRide(rideId, driverId) {
   }
 
   if (
-    ![RIDE_STATUS.DRIVER_ASSIGNED, RIDE_STATUS.DRIVER_ARRIVING].includes(
+    ![RIDE_STATUS.ACCEPTED, RIDE_STATUS.DRIVER_ARRIVING].includes(
       ride.status
     )
   ) {
     throw new Error(
-      `Cannot start ride in ${ride.status} status. Must be in DRIVER_ASSIGNED or DRIVER_ARRIVING`
+      `Cannot start ride in ${ride.status} status. Must be in ACCEPTED or DRIVER_ARRIVING`
     );
   }
 
@@ -521,7 +566,105 @@ async function completeRide(rideId, driverId) {
     console.error(`⚠️ [Ride Service] Failed to sync status to other services: ${error.message}`);
   }
 
+  await processRidePayment(serializeRide(ride));
+  return ride;
+}
 
+async function processRidePayment(ride) {
+  const amount = extractRideAmount(ride);
+  if (!ride?.rideId || !ride?.userId || amount <= 0) {
+    console.warn('[ride.service] skipping payment trigger because ride payload is incomplete', {
+      rideId: ride?.rideId || null,
+      userId: ride?.userId || null,
+      amount,
+    });
+    return null;
+  }
+
+  const paymentServiceUrl = process.env.PAYMENT_SERVICE_URL || 'http://payment-service:3102';
+  const idempotencyKey = `ride-payment-${ride.rideId}`;
+  const paymentHeaders = {
+    'Content-Type': 'application/json',
+    'Idempotency-Key': idempotencyKey,
+  };
+
+  try {
+    const createResponse = await axios.post(
+      `${paymentServiceUrl}/api/v1/payments`,
+      {
+        rideId: ride.rideId,
+        userId: ride.userId,
+        amount,
+        currency: 'VND',
+        method: normalizePaymentMethod(ride.paymentMethod),
+      },
+      { headers: paymentHeaders }
+    );
+
+    const payment = createResponse.data?.data || createResponse.data;
+    const paymentId = payment?.paymentId;
+
+    if (!paymentId) {
+      console.warn('[ride.service] payment trigger returned without paymentId for ride', ride.rideId);
+      return null;
+    }
+
+    await syncPaymentState({
+      rideId: ride.rideId,
+      paymentId,
+      status: payment.status || 'PENDING',
+    });
+
+    const confirmResponse = await axios.post(
+      `${paymentServiceUrl}/api/v1/payments/${paymentId}/confirm`,
+      { outcome: 'success' },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+
+    const confirmedPayment = confirmResponse.data?.data || confirmResponse.data;
+    await syncPaymentState({
+      rideId: ride.rideId,
+      paymentId: confirmedPayment?.paymentId || paymentId,
+      status: confirmedPayment?.status || 'COMPLETED',
+    });
+
+    return confirmedPayment;
+  } catch (error) {
+    console.error('[ride.service] failed to trigger payment:', error.message);
+    return null;
+  }
+}
+
+async function syncPaymentState({ rideId, paymentId = null, status = null }) {
+  if (!rideId) {
+    return null;
+  }
+
+  const ride = await getRideById(rideId);
+  if (!ride) {
+    return null;
+  }
+
+  if (usesMongo()) {
+    if (paymentId) {
+      ride.paymentId = paymentId;
+    }
+    if (status) {
+      ride.paymentStatus = status;
+    }
+    ride.updatedAt = new Date();
+    await ride.save();
+    return ride;
+  }
+
+  if (paymentId) {
+    ride.paymentId = paymentId;
+  }
+  if (status) {
+    ride.paymentStatus = status;
+  }
+  ride.updatedAt = new Date().toISOString();
+  await saveRide(ride);
   return ride;
 }
 
@@ -562,10 +705,11 @@ async function cancelRide(rideId, userId = null, driverId = null, reason = '') {
 
 async function getRideStatistics() {
   if (usesMongo()) {
-    const [searching, driverAssigned, driverArriving, inProgress, completed, cancelled] =
+    const [searching, waitingForAcceptance, accepted, driverArriving, inProgress, completed, cancelled] =
       await Promise.all([
         RideMongoModel.countDocuments({ status: RIDE_STATUS.SEARCHING }),
-        RideMongoModel.countDocuments({ status: RIDE_STATUS.DRIVER_ASSIGNED }),
+        RideMongoModel.countDocuments({ status: RIDE_STATUS.WAITING_FOR_ACCEPTANCE }),
+        RideMongoModel.countDocuments({ status: RIDE_STATUS.ACCEPTED }),
         RideMongoModel.countDocuments({ status: RIDE_STATUS.DRIVER_ARRIVING }),
         RideMongoModel.countDocuments({ status: RIDE_STATUS.IN_PROGRESS }),
         RideMongoModel.countDocuments({ status: RIDE_STATUS.COMPLETED }),
@@ -573,10 +717,11 @@ async function getRideStatistics() {
       ]);
 
     return {
-      totalRides: searching + driverAssigned + driverArriving + inProgress + completed + cancelled,
+      totalRides: searching + waitingForAcceptance + accepted + driverArriving + inProgress + completed + cancelled,
       byStatus: {
         searching,
-        driverAssigned,
+        waitingForAcceptance,
+        accepted,
         driverArriving,
         inProgress,
         completed,
@@ -591,7 +736,8 @@ async function getRideStatistics() {
     totalRides: allRides.length,
     byStatus: {
       searching: allRides.filter((r) => r.status === RIDE_STATUS.SEARCHING).length,
-      driverAssigned: allRides.filter((r) => r.status === RIDE_STATUS.DRIVER_ASSIGNED).length,
+      waitingForAcceptance: allRides.filter((r) => r.status === RIDE_STATUS.WAITING_FOR_ACCEPTANCE).length,
+      accepted: allRides.filter((r) => r.status === RIDE_STATUS.ACCEPTED).length,
       driverArriving: allRides.filter((r) => r.status === RIDE_STATUS.DRIVER_ARRIVING).length,
       inProgress: allRides.filter((r) => r.status === RIDE_STATUS.IN_PROGRESS).length,
       completed: allRides.filter((r) => r.status === RIDE_STATUS.COMPLETED).length,
@@ -614,6 +760,7 @@ module.exports = {
   getRideById,
   getRidesByUserId,
   getRidesByDriverId,
+  assignDriver,
   acceptRide,
   updateRideLocation,
   startRide,
@@ -621,5 +768,6 @@ module.exports = {
   cancelRide,
   getHistoryByDriverId,
   getRideStatistics,
+  syncPaymentState,
   clearAllRides,
 };

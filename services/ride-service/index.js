@@ -30,10 +30,12 @@ async function startServer() {
       const { getEnv } = require('./src/config/env.js');
       const { startPaymentConsumer } = require('./src/events/paymentConsumer.js');
       const { startBookingConsumer } = require('./src/events/bookingConsumer.js');
+      const { startAssignmentConsumer } = require('./src/events/assignmentConsumer.js');
       const env = getEnv();
       await startPaymentConsumer(env);
       await startBookingConsumer(env);
-      console.log('[Kafka] All consumers (Payment, Booking) started');
+      await startAssignmentConsumer(env);
+      console.log('[Kafka] All consumers (Payment, Booking, Assignment) started');
     } catch (consumerError) {
       console.warn('[Kafka] Consumers failed to start:', consumerError.message);
     }

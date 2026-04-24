@@ -35,10 +35,19 @@ async def _publish_assignment_event(payload: dict) -> bool:
     producer = AIOKafkaProducer(bootstrap_servers=settings.kafka_bootstrap_servers)
     await producer.start()
     try:
-        await producer.send_and_wait(
-            settings.ride_assigned_topic,
-            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        )
+        serialized_payload = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        await producer.send_and_wait(settings.ride_assigned_topic, serialized_payload)
+        legacy_topic = getattr(settings, "legacy_driver_assigned_topic", "")
+        if legacy_topic and legacy_topic != settings.ride_assigned_topic:
+            legacy_payload = json.dumps(
+                {
+                    **payload,
+                    "eventType": "DriverAssigned",
+                    "type": "DriverAssigned",
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            await producer.send_and_wait(legacy_topic, legacy_payload)
         await producer.flush()
         logger.info("Published %s event for ride=%s driver=%s", settings.ride_assigned_topic, payload["rideId"], payload["driverId"])
         return True
@@ -76,7 +85,7 @@ async def score_matching(payload: MatchingScoreRequest):
 @router.post(
     "/best-driver",
     response_model=BestDriverResponse,
-    summary="Chọn tài xế tốt nhất cho cuốc xe và publish sự kiện driver.assigned",
+    summary="Chon tai xe tot nhat cho cuoc xe va publish su kien ride.assigned",
 )
 async def choose_best_driver(payload: BestDriverRequest, background_tasks: BackgroundTasks):
     """Hard constraints -> feature enrich -> AI/rule scoring -> publish assignment event."""

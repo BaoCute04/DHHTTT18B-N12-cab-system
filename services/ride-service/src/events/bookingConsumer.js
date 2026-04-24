@@ -32,6 +32,7 @@ async function startBookingConsumer(env) {
           destination: payload.drop || payload.destination,
           priceSnapshot: payload.priceSnapshot,
           quoteId: payload.quoteId,
+          paymentMethod: payload.paymentMethod,
           status: 'SEARCHING' // Initial state after booking
         });
         

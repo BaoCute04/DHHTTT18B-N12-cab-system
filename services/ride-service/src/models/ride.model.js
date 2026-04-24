@@ -34,6 +34,7 @@ class Ride {
     // Financial Data (Phase 2)
     this.quoteId = data.quoteId || null;
     this.priceSnapshot = data.priceSnapshot || 0;
+    this.paymentMethod = data.paymentMethod || 'CASH';
     this.paymentStatus = data.paymentStatus || 'PENDING';
     this.paymentId = data.paymentId || null;
 
@@ -58,6 +59,7 @@ class Ride {
       status: this.status,
       quoteId: this.quoteId,
       priceSnapshot: this.priceSnapshot,
+      paymentMethod: this.paymentMethod,
       paymentStatus: this.paymentStatus,
       paymentId: this.paymentId,
       pickup: this.pickup,

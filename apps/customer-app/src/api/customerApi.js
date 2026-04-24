@@ -1,4 +1,5 @@
-const paymentBaseUrl = import.meta.env.VITE_PAYMENT_API_BASE_URL || "http://localhost:3102/api/v1";
+import { request } from "@/services/httpClient.js";
+
 const gatewayUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const socketUrl = (import.meta.env.VITE_WS_BASE_URL || "ws://localhost:3000").replace(/^http/, "ws");
 
@@ -26,12 +27,12 @@ export function buildEtaAndPrice(distanceKm, demandIndex = 1) {
   return { etaMinutes, price, surge: safeDemand };
 }
 
-export async function createPayment({ rideId, userId, amount, currency = "VND", method = "cash" }) {
-  const response = await fetch(`${paymentBaseUrl}/payments`, {
+export async function createPayment({ rideId, userId, amount, currency = "VND", method = "cash", idempotencyKey = `ride-payment-${rideId}` }) {
+  const response = await request("/api/v1/payments", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Idempotency-Key": `customer-app-${rideId}-${Date.now()}`
+      "Idempotency-Key": idempotencyKey
     },
     body: JSON.stringify({ rideId, userId, amount, currency, method })
   });
@@ -44,7 +45,7 @@ export async function createPayment({ rideId, userId, amount, currency = "VND", 
 }
 
 export async function getPayment(paymentId) {
-  const response = await fetch(`${paymentBaseUrl}/payments/${paymentId}`);
+  const response = await request(`/api/v1/payments/${paymentId}`);
   const json = await response.json();
   if (!response.ok) {
     throw new Error(json?.message || "Get payment failed");
@@ -53,7 +54,7 @@ export async function getPayment(paymentId) {
 }
 
 export async function confirmPayment(paymentId, outcome = "success") {
-  const response = await fetch(`${paymentBaseUrl}/payments/${paymentId}/confirm`, {
+  const response = await request(`/api/v1/payments/${paymentId}/confirm`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -68,7 +69,7 @@ export async function confirmPayment(paymentId, outcome = "success") {
 }
 
 export async function refundPayment(paymentId, reason = "Refund requested from customer app") {
-  const response = await fetch(`${paymentBaseUrl}/payments/${paymentId}/refund`, {
+  const response = await request(`/api/v1/payments/${paymentId}/refund`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

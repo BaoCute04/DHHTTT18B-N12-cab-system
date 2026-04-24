@@ -59,20 +59,36 @@ async def start_matching_consumer():
 
                         # Following Sequence Diagram 9.1: Only notify, don't update DB directly
                         # The Booking Service will act as Orchestrator and update its own DB
-                        await producer.send_and_wait(
-                            settings.ride_assigned_topic,
-                            {
-                                "eventId": data.get("eventId") or "evt-" + booking_id[:8],
-                                "type": "DriverSelected",
-                                "bookingId": booking_id,
-                                "rideId": booking_id, # Target rideId will be same as bookingId
-                                "driverId": selected_driver_id,
-                                "userId": data.get("userId"),
-                                "timestamp": data.get("timestamp"),
-                            },
-                        )
+                        assignment_event = {
+                            "eventId": data.get("eventId") or "evt-" + booking_id[:8],
+                            "eventType": "RideAssigned",
+                            "type": "RideAssigned",
+                            "bookingId": booking_id,
+                            "rideId": data.get("rideId") or booking_id,
+                            "driverId": selected_driver_id,
+                            "userId": data.get("userId"),
+                            "pickup": data.get("pickup"),
+                            "destination": data.get("drop") or data.get("destination"),
+                            "priceSnapshot": data.get("priceSnapshot"),
+                            "vehicleType": data.get("vehicleType"),
+                            "paymentMethod": data.get("paymentMethod"),
+                            "status": "WAITING_FOR_ACCEPTANCE",
+                            "timestamp": data.get("timestamp"),
+                            "source": "matching-service",
+                        }
+                        await producer.send_and_wait(settings.ride_assigned_topic, assignment_event)
+                        legacy_topic = getattr(settings, "legacy_driver_assigned_topic", "")
+                        if legacy_topic and legacy_topic != settings.ride_assigned_topic:
+                            await producer.send_and_wait(
+                                legacy_topic,
+                                {
+                                    **assignment_event,
+                                    "eventType": "DriverAssigned",
+                                    "type": "DriverAssigned",
+                                },
+                            )
                         logger.info(
-                            "📤 [Matching Task] Published %s (DriverSelected) for booking %s",
+                            "📤 [Matching Task] Published %s (RideAssigned) for booking %s",
                             settings.ride_assigned_topic,
                             booking_id,
                         )
