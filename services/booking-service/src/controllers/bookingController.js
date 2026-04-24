@@ -143,6 +143,8 @@ export const createBooking = async (req, res) => {
             drop: newBooking.drop,
             paymentMethod: newBooking.paymentMethod,
             vehicleType: newBooking.vehicleType,
+            quoteId: newBooking.quoteId,
+            priceSnapshot: newBooking.priceSnapshot ? newBooking.priceSnapshot.amount : 0,
             timestamp: newBooking.createdAt
         });
 

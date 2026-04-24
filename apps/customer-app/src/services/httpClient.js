@@ -27,5 +27,22 @@ export async function request(path, options = {}) {
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return fetch(`${apiBaseUrl}${normalizedPath}`, options);
+  const url = `${apiBaseUrl}${normalizedPath}`;
+
+  // Automatically attach Authorization header if token exists
+  const savedSession = localStorage.getItem("cab_session");
+  const headers = { ...(options.headers || {}) };
+
+  if (savedSession) {
+    try {
+      const { accessToken } = JSON.parse(savedSession);
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+    } catch (e) {
+      console.error("Failed to parse session from localStorage", e);
+    }
+  }
+
+  return fetch(url, { ...options, headers });
 }
