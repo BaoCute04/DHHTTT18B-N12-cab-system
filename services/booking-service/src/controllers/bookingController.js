@@ -242,6 +242,19 @@ export const updateBooking = async (req, res) => {
         if (!booking) {
             return res.status(404).json({ success: false, message: 'Booking not found' });
         }
+        
+        if (updates.status === 'ACCEPTED') {
+            await messageBroker.publish('ride.created', {
+                eventId: uuidv4(),
+                type: 'RideAccepted',
+                event_type: 'ride_accepted',
+                ride_id: booking.bookingId,
+                bookingId: booking.bookingId,
+                userId: booking.userId,
+                status: booking.status,
+                timestamp: new Date().toISOString()
+            });
+        }
 
         res.status(200).json(formatResponse("Booking updated", booking, req));
     } catch (error) {

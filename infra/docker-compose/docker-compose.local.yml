@@ -77,13 +77,15 @@ services:
     depends_on:
       booking-mongodb:
         condition: service_started
+      ml-redis:
+        condition: service_started
       kafka:
         condition: service_started
     networks:
       - cab-services
       - booking-data
-      - cab-broker
       - ml-platform-data
+      - cab-broker
 
   auth-service:
     build:
