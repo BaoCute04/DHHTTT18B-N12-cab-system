@@ -77,15 +77,13 @@ services:
     depends_on:
       booking-mongodb:
         condition: service_started
-      ml-redis:
-        condition: service_started
       kafka:
         condition: service_started
     networks:
       - cab-services
       - booking-data
-      - ml-platform-data
       - cab-broker
+      - ml-platform-data
 
   auth-service:
     build:
@@ -421,6 +419,7 @@ services:
       - cab_ml_redis_data:/data
     networks:
       - ml-platform-data
+      - pricing-data
 
   booking-mongodb:
     image: mongo:7
@@ -495,6 +494,12 @@ services:
       - "9092"
     volumes:
       - cab_kafka_data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
     networks:
       - cab-broker
 
@@ -503,9 +508,10 @@ services:
     container_name: cab-kafka-init
     depends_on:
       kafka:
-        condition: service_started
+        condition: service_healthy
     command: >
       /bin/sh -c "
+      echo 'Kafka is healthy. Creating topics...' &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic driver.assigned --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic driver.location.updated --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic ride.created --partitions 1 --replication-factor 1 &&
@@ -514,7 +520,8 @@ services:
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.failed --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.success --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.completed --partitions 1 --replication-factor 1 &&
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic eta.result --partitions 1 --replication-factor 1
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic eta.result --partitions 1 --replication-factor 1 &&
+      echo 'Kafka topics created successfully'
       "
     networks:
       - cab-broker

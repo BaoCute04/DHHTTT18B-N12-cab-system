@@ -263,6 +263,10 @@ function resolveDependencyPlan(req) {
     const method = (req.method || '').toUpperCase();
     const path = normalizeAuthPath(req);
 
+    if (method === 'POST' && path === '/register') {
+        return { requirePostgres: true, requireRedis: false };
+    }
+
     if (method === 'POST' && (path === '/login/otp/request' || path === '/login/otp/verify')) {
         return { requirePostgres: false, requireRedis: true };
     }

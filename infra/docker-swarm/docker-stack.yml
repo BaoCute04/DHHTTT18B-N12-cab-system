@@ -150,7 +150,6 @@ services:
         REDIS_HOST: redis
         REDIS_PORT: 6379
         REDIS_PASSWORD: ${REDIS_PASSWORD}
-        REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       PORT: 3101
     deploy: &app-service-deploy
       replicas: ${APP_SERVICE_REPLICAS}

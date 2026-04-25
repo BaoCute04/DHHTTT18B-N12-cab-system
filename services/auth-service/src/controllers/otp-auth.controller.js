@@ -1,5 +1,26 @@
 function createOtpAuthController(otpAuthService) {
     return {
+        register: async (req, res, next) => {
+            try {
+                const data = await otpAuthService.register({
+                    email: req.body.email,
+                    password: req.body.password,
+                    name: req.body.name,
+                    role: req.body.role || 'customer',
+                    requestId: req.requestId,
+                });
+
+                return res.status(201).json({
+                    success: true,
+                    data,
+                    error: null,
+                    meta: { requestId: req.requestId },
+                });
+            } catch (error) {
+                return next(error);
+            }
+        },
+
         requestOtp: async (req, res, next) => {
             try {
                 const data = await otpAuthService.requestOtp({

@@ -2,7 +2,7 @@ import PricingRule from '../models/PricingRule.js';
 import axios from 'axios';
 import { logger } from '../utils/logger.js';
 import { v4 as uuidv4 } from 'uuid';
-import { saveQuote, getQuoteLock, saveQuoteLock, readQuote } from '../utils/redis.js';
+import { saveQuote } from '../utils/redis.js';
 import { latLngToZone } from '../utils/geohash.js';
 import { evaluateSurge } from '../utils/surge-service.js';
 
@@ -18,34 +18,8 @@ export const getQuote = async (req, res) => {
     const reqId = req.headers['x-request-id'] || uuidv4();
     try {
         // 1. Nhận tọa độ điểm đón + điểm trả + thông tin cuốc xe
-    const { pickupLat, pickupLng, dropLat, dropLng, vehicleType } = req.body;
+        const { pickupLat, pickupLng, dropLat, dropLng, vehicleType } = req.body;
         let { distanceKm, durationMin } = req.body;
-
-        // [DEDUP] Kiểm tra xem user vừa quote route này chưa (trong 3 phút)
-        const fingerprint = `${pickupLat}_${pickupLng}_${dropLat}_${dropLng}_${vehicleType}`;
-        const lockKey = `quote:lock:${fingerprint}`;
-        const existingLock = await getQuoteLock(lockKey);
-        if (existingLock) {
-            const cachedData = await readQuote(existingLock.quoteId);
-            logger.info('Quote dedup hit — trả lại quote cũ', { reqId, quoteId: existingLock.quoteId, ttlRemaining: existingLock.ttl });
-            return res.status(200).json(formatResponse("Quote generated successfully", {
-                quoteId: existingLock.quoteId,
-                expiresIn: existingLock.ttl,
-                priceSnapshot: cachedData ? {
-                    amount: cachedData.amount,
-                    distance: `${cachedData.distanceKm} km`,
-                    duration: `${cachedData.durationMin} mins`,
-                    surgeMultiplier: cachedData.surgeMultiplier,
-                    vehicleType: cachedData.vehicleType,
-                    metrics: {
-                        supply: cachedData.supplyCount ?? null,
-                        demand: cachedData.demandCount ?? null,
-                        zone: cachedData.zone,
-                        surgeSource: cachedData.surgeSource,
-                    }
-                } : null,
-            }, req));
-        }
 
         // [NHIỆM VỤ 1] Tự động tính Distance/ETA nếu chỉ có tọa độ
         if (!distanceKm || !durationMin) {
@@ -104,12 +78,8 @@ export const getQuote = async (req, res) => {
             pickupLat,
             pickupLng,
             zone: zoneId,
-            supplyCount,
-            demandCount,
             createdAt: new Date().toISOString(),
         });
-        // Lưu dedup lock cùng TTL để lần sau cùng route trả về quote này
-        await saveQuoteLock(lockKey, quoteId, QUOTE_TTL_SECONDS);
 
         logger.info('Quote generated', { reqId, quoteId, finalAmount, surgeMultiplier, surgeSource, supplyCount, demandCount });
 

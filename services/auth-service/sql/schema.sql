@@ -30,6 +30,14 @@ CREATE TABLE IF NOT EXISTS role_permissions (
   PRIMARY KEY (role, permission)
 );
 
+CREATE TABLE IF NOT EXISTS user_credentials (
+  account_id UUID PRIMARY KEY REFERENCES auth_accounts(id) ON DELETE CASCADE,
+  password_hash VARCHAR NOT NULL,
+  display_name VARCHAR,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS admin_credentials (
   account_id UUID PRIMARY KEY REFERENCES auth_accounts(id) ON DELETE CASCADE,
   password_hash VARCHAR NOT NULL,

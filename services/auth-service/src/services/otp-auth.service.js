@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { hashPassword } = require('../lib/password');
 
 const {
     buildOtpChallengeKey,
@@ -26,6 +27,67 @@ function createOtpAuthService(options) {
     } = options;
 
     return {
+        async register({ email, password, name, role = 'customer', requestId }) {
+            const normalizedEmail = String(email || '').trim().toLowerCase();
+            const displayName = String(name || '').trim();
+            const passwordHash = await hashPassword(password);
+
+            let account = await authAccountsRepository.findByDestination({
+                destination: normalizedEmail,
+                destinationType: 'email',
+            });
+            const alreadyExisted = Boolean(account);
+
+            if (!account) {
+                account = await authAccountsRepository.createAccount({
+                    destination: normalizedEmail,
+                    destinationType: 'email',
+                    status: 'active',
+                });
+            }
+
+            await authAccountsRepository.assignRole({ accountId: account.id, role });
+
+            if (typeof authAccountsRepository.upsertUserCredential === 'function') {
+                await authAccountsRepository.upsertUserCredential({
+                    accountId: account.id,
+                    passwordHash,
+                    displayName,
+                });
+            }
+
+            const accountWithRoles = await authAccountsRepository.getAccountWithRoles(account.id);
+
+            await recordAudit(auditService, {
+                requestId,
+                accountId: account.id,
+                actorRole: role,
+                eventType: 'user_register',
+                eventStatus: 'success',
+                metadata: {
+                    email: normalizedEmail,
+                    name: displayName,
+                    role,
+                    alreadyExisted,
+                },
+            });
+
+            return {
+                user_id: accountWithRoles.subject_id,
+                account_id: accountWithRoles.id,
+                email: accountWithRoles.destination,
+                name: displayName,
+                role,
+                roles: accountWithRoles.roles || [role],
+                status: accountWithRoles.status,
+                created_at: accountWithRoles.created_at,
+                already_existed: alreadyExisted,
+                message: alreadyExisted
+                    ? 'User already existed, returning existing user_id for repeatable tests.'
+                    : 'User registered successfully.',
+            };
+        },
+
         async requestOtp({ role, destination, channel, requestId }) {
             try {
                 // 1. CHECK IF ACCOUNT EXISTS FIRST (STRICT)

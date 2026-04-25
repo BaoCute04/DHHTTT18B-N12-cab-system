@@ -61,24 +61,6 @@ export async function saveQuote(quoteId, quoteData) {
 }
 
 /**
- * Đọc quote KHÔNG xóa — dùng để hiển thị lại giá khi dedup hit.
- *
- * @param {string} quoteId
- * @returns {Promise<object|null>}
- */
-export async function readQuote(quoteId) {
-  try {
-    const client = getRedisClient();
-    const raw = await client.get(`quote:${quoteId}`);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('[pricing-service/redis] readQuote thất bại:', err.message);
-    return null;
-  }
-}
-
-/**
  * Đọc và XÓA quote khỏi Redis (one-time use).
  * Nếu quote không tồn tại hoặc đã hết hạn → trả về null.
  * Dùng GETDEL để đảm bảo atomic: không thể dùng cùng quote_id 2 lần.
@@ -103,40 +85,3 @@ export async function getAndConsumeQuote(quoteId) {
   }
 }
 
-/**
- * Đọc quote lock (dedup) theo fingerprint route.
- * Trả về { quoteId, ttl } nếu còn hạn, hoặc null nếu đã hết.
- *
- * @param {string} lockKey - fingerprint key, e.g. 'quote:lock:{hash}'
- */
-export async function getQuoteLock(lockKey) {
-  try {
-    const client = getRedisClient();
-    const [quoteId, ttl] = await Promise.all([
-      client.get(lockKey),
-      client.ttl(lockKey),
-    ]);
-    if (!quoteId || ttl <= 0) return null;
-    return { quoteId, ttl };
-  } catch (err) {
-    console.error('[pricing-service/redis] getQuoteLock thất bại:', err.message);
-    return null;
-  }
-}
-
-/**
- * Lưu quote lock (dedup pointer) cùng TTL với quote.
- *
- * @param {string} lockKey  - fingerprint key
- * @param {string} quoteId  - UUID của quote vừa tạo
- * @param {number} ttl      - TTL tính bằng giây
- */
-export async function saveQuoteLock(lockKey, quoteId, ttl = QUOTE_TTL_SECONDS) {
-  try {
-    const client = getRedisClient();
-    await client.setex(lockKey, ttl, quoteId);
-    console.info(`[pricing-service/redis] 🔒 Quote lock saved: key=${lockKey} quoteId=${quoteId} TTL=${ttl}s`);
-  } catch (err) {
-    console.error('[pricing-service/redis] saveQuoteLock thất bại:', err.message);
-  }
-}

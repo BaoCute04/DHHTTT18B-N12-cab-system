@@ -1,3 +1,15 @@
+async function ensureUserCredentialsTable(pool) {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_credentials (
+            account_id UUID PRIMARY KEY REFERENCES auth_accounts(id) ON DELETE CASCADE,
+            password_hash VARCHAR NOT NULL,
+            display_name VARCHAR,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+}
+
 function createAuthAccountsRepository(pool) {
     return {
         async findBySubjectId(subjectId) {
@@ -30,6 +42,21 @@ function createAuthAccountsRepository(pool) {
                 [destination, destinationType, status]
             );
             return result.rows[0];
+        },
+
+        async upsertUserCredential({ accountId, passwordHash, displayName = null }) {
+            await ensureUserCredentialsTable(pool);
+            const result = await pool.query(
+                `INSERT INTO user_credentials (account_id, password_hash, display_name)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (account_id) DO UPDATE
+                 SET password_hash = EXCLUDED.password_hash,
+                     display_name = EXCLUDED.display_name,
+                     updated_at = NOW()
+                 RETURNING account_id, display_name, created_at, updated_at`,
+                [accountId, passwordHash, displayName]
+            );
+            return result.rows[0] || null;
         },
 
         async updateStatus(accountId, status) {

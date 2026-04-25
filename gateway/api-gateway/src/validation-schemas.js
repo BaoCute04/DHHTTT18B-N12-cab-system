@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 const uuidSchema = z.string().uuid();
+const phoneDestinationSchema = z
+  .string()
+  .regex(/^(0|\+84)[0-9]{9,10}$/, "Số điện thoại không đúng định dạng (10-11 chữ số)");
+const emailDestinationSchema = z.string().trim().toLowerCase().email();
+const authDestinationSchema = z.union([phoneDestinationSchema, emailDestinationSchema]);
 const isoDateSchema = z.string().datetime({ offset: true });
 const moneyIntegerSchema = z.number().int().nonnegative();
 const coordinatesSchema = z.object({
@@ -25,6 +30,14 @@ export const httpSchemas = {
       clientType: z.enum(["customer-app", "driver-app", "admin-dashboard"]).optional()
     })
     .strict(),
+  authRegister: z
+    .object({
+      email: emailDestinationSchema,
+      password: z.string().min(6).max(100),
+      name: z.string().min(2).max(100),
+      role: z.enum(["customer", "driver"]).optional()
+    })
+    .strict(),
   refresh: z
     .object({
       refreshToken: z.string().min(10).max(2048)
@@ -32,14 +45,14 @@ export const httpSchemas = {
     .strict(),
   authOtpRequest: z
     .object({
-      destination: z.string().regex(/^(0|\+84)[0-9]{9,10}$/, "Số điện thoại không đúng định dạng (10-11 chữ số)"),
+      destination: authDestinationSchema,
       role: z.enum(["customer", "driver"]),
       channel: z.enum(["sms", "email"]).optional()
     })
     .strict(),
   authOtpVerify: z
     .object({
-      destination: z.string().regex(/^(0|\+84)[0-9]{9,10}$/, "Số điện thoại không đúng định dạng (10-11 chữ số)"),
+      destination: authDestinationSchema,
       role: z.enum(["customer", "driver"]),
       code: z.string().regex(/^\d{6}$/)
     })

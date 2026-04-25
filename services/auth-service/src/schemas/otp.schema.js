@@ -1,5 +1,12 @@
 const { z } = require('zod');
 
+const registerSchema = z.object({
+    email: z.string().trim().toLowerCase().email(),
+    password: z.string().min(6).max(100),
+    name: z.string().trim().min(2).max(100),
+    role: z.enum(['customer', 'driver']).default('customer'),
+});
+
 const otpRequestSchema = z.object({
     destination: z.string().trim().min(3).max(255),
     role: z.enum(['customer', 'driver']),
@@ -16,6 +23,7 @@ const otpVerifySchema = z.object({
 });
 
 module.exports = {
+    registerSchema,
     otpRequestSchema,
     otpVerifySchema,
 };

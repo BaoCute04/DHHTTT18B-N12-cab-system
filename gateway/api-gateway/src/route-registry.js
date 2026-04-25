@@ -39,6 +39,14 @@ export function createRouteRegistry({ env = process.env, upstreamTimeoutMs = 500
       rateLimit: null
     },
     {
+      key: "auth-register",
+      method: "POST",
+      path: "/api/v1/auth/register",
+      authRequired: false,
+      rateLimit: authRatePolicy,
+      validationSchema: httpSchemas.authRegister
+    },
+    {
       key: "auth-login",
       method: "POST",
       path: "/api/v1/auth/login",
