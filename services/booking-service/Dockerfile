@@ -7,7 +7,7 @@ COPY services/booking-service/package.json services/booking-service/package.json
 COPY platform platform
 COPY services/booking-service services/booking-service
 
-RUN npm ci --workspace @cab/booking-service --include-workspace-root
+RUN npm install --workspace @cab/booking-service --include-workspace-root
 
 WORKDIR /app/services/booking-service
 

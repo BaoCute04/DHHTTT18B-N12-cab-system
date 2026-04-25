@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 let connectionPromise = null;
 let mongoConnected = false;
@@ -37,7 +37,7 @@ function isMongoConnected() {
   return mongoConnected && mongoose.connection.readyState === 1;
 }
 
-module.exports = {
+export {
   mongoose,
   connectMongo,
   disconnectMongo,

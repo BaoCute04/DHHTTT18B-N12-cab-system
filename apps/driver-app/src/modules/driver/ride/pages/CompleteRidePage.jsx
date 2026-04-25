@@ -1,4 +1,14 @@
+import { useLocation, useNavigate } from "react-router-dom";
+
 export function CompleteRidePage() {
+  const navigate = useNavigate();
+  const { state } = useLocation();
+  const ride = state?.ride || {};
+
+  const handleFinish = () => {
+    navigate("/driver/availability/dashboard", { replace: true });
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -27,15 +37,15 @@ export function CompleteRidePage() {
             <div className="text-xs text-slate-600 space-y-1">
               <div className="flex justify-between">
                 <span>Quãng đường</span>
-                <span>5.2 km</span>
+                <span>{Number(ride.distanceKm || ride.distance || 0).toFixed(1)} km</span>
               </div>
               <div className="flex justify-between">
                 <span>Thời gian</span>
-                <span>15 phút</span>
+                <span>{ride.duration || Math.ceil((ride.distanceKm || ride.distance || 0) * 2) || 10} phút</span>
               </div>
               <div className="flex justify-between font-semibold text-slate-900">
                 <span>Thu nhập</span>
-                <span>45.000đ</span>
+                <span>{(ride.priceSnapshot || ride.price || ride.estimatedFare || 0).toLocaleString()}đ</span>
               </div>
             </div>
           </div>
@@ -46,8 +56,10 @@ export function CompleteRidePage() {
           </div>
 
           <div className="mb-4">
-            <button className="w-full rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98]">
-              Xác nhận hoàn tất
+            <button 
+              onClick={handleFinish}
+              className="w-full rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98]">
+              Trở về màn hình chính
             </button>
           </div>
 

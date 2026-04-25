@@ -3,14 +3,14 @@
  * Business logic for ride operations with optional MongoDB persistence
  */
 
-const { v4: uuidv4 } = require('uuid');
-const axios = require('axios');
-const { Ride, RIDE_STATUS } = require('../models/ride.model');
-const { RideMongoModel } = require('../models/ride.mongo.model');
-const { calculateETA } = require('./eta.service');
-const { updateDriverLocation } = require('./location.service');
-const { publishRideEvent } = require('./kafka.publisher');
-const { isMongoConnected } = require('../database/mongoose');
+import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
+import { Ride, RIDE_STATUS } from '../models/ride.model.js';
+import { RideMongoModel } from '../models/ride.mongo.model.js';
+import { calculateETA } from './eta.service.js';
+import { updateDriverLocation } from './location.service.js';
+import { publishRideEvent } from './kafka.publisher.js';
+import { isMongoConnected } from '../database/mongoose.js';
 
 
 const rides = new Map();
@@ -37,7 +37,6 @@ function fromMongoDoc(doc) {
 
 function setRideFields(ride, updates) {
   Object.assign(ride, updates);
-  ride.updatedAt = new Date().toISOString();
   return ride;
 }
 
@@ -66,6 +65,10 @@ async function emitRideStatusChanged(ride, extra = {}) {
       pickup: ride.pickup || null,
       destination: ride.destination || null,
       etaMinutes: ride.etaMinutes ?? null,
+      price: ride.priceSnapshot || 0,
+      priceSnapshot: ride.priceSnapshot || 0,
+      distanceKm: ride.distanceKm || 0,
+      rideType: ride.rideType || 'bike',
       updatedAt: ride.updatedAt,
       ...extra,
     }, ride.rideId);
@@ -166,7 +169,8 @@ async function getRidesByDriverId(driverId) {
       driverId,
       status: {
         $in: [
-          RIDE_STATUS.DRIVER_ASSIGNED,
+          RIDE_STATUS.WAITING_FOR_ACCEPTANCE,
+          RIDE_STATUS.ACCEPTED,
           RIDE_STATUS.DRIVER_ARRIVING,
           RIDE_STATUS.IN_PROGRESS,
         ],
@@ -178,11 +182,49 @@ async function getRidesByDriverId(driverId) {
     (ride) =>
       ride.driverId === driverId &&
       [
-        RIDE_STATUS.DRIVER_ASSIGNED,
+        RIDE_STATUS.WAITING_FOR_ACCEPTANCE,
+        RIDE_STATUS.ACCEPTED,
         RIDE_STATUS.DRIVER_ARRIVING,
         RIDE_STATUS.IN_PROGRESS,
       ].includes(ride.status)
   );
+}
+
+async function getHistoryByDriverId(driverId) {
+  if (usesMongo()) {
+    return RideMongoModel.find({
+      driverId,
+      status: {
+        $in: [RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED],
+      },
+    }).sort({ updatedAt: -1 });
+  }
+
+  return Array.from(rides.values()).filter(
+    (ride) =>
+      ride.driverId === driverId &&
+      [RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED].includes(ride.status)
+  );
+}
+
+async function emitRideCreated(ride, extra = {}) {
+  if (!ride) return;
+  try {
+    await publishRideEvent('ride.created.internal', {
+      eventType: 'RideInitialized',
+      rideId: ride.rideId,
+      bookingId: ride.bookingId,
+      userId: ride.userId,
+      pickup: ride.pickup,
+      destination: ride.destination,
+      priceSnapshot: ride.priceSnapshot,
+      status: ride.status,
+      updatedAt: ride.updatedAt,
+      ...extra,
+    }, ride.rideId);
+  } catch (error) {
+    console.warn('[ride.service] failed to publish ride.created.internal:', error.message);
+  }
 }
 
 async function createRide(rideData) {
@@ -193,30 +235,40 @@ async function createRide(rideData) {
     throw new Error('pickup and destination are required');
   }
 
-  const ride = usesMongo()
-    ? new RideMongoModel({
-      rideId: uuidv4(),
-      bookingId: rideData.bookingId,
-      userId: rideData.userId,
-      driverId: rideData.driverId || null,
-      pickup: rideData.pickup,
-      destination: rideData.destination,
-      status: rideData.driverId ? RIDE_STATUS.DRIVER_ASSIGNED : RIDE_STATUS.SEARCHING,
-    })
-    : new Ride({
-      rideId: uuidv4(),
-      bookingId: rideData.bookingId,
-      userId: rideData.userId,
-      driverId: rideData.driverId || null,
-      pickup: rideData.pickup,
-      destination: rideData.destination,
-      status: rideData.driverId ? RIDE_STATUS.DRIVER_ASSIGNED : RIDE_STATUS.SEARCHING,
-    });
+  const payload = {
+    rideId: rideData.rideId || uuidv4(),
+    bookingId: rideData.bookingId,
+    userId: rideData.userId,
+    driverId: rideData.driverId || null,
+    pickup: rideData.pickup,
+    destination: rideData.destination,
+    priceSnapshot: rideData.priceSnapshot || 0,
+    distanceKm: rideData.distanceKm || 0,
+    rideType: rideData.rideType || 'bike',
+    quoteId: rideData.quoteId || null,
+    status: rideData.status || RIDE_STATUS.SEARCHING
+  };
 
-  const savedRide = await saveRide(ride);
-  await emitRideStatusChanged(serializeRide(savedRide), {
-    action: 'created',
-  });
+  let savedRide;
+  if (usesMongo()) {
+    // Idempotency check using findOneAndUpdate with upsert
+    savedRide = await RideMongoModel.findOneAndUpdate(
+      { bookingId: payload.bookingId },
+      { $setOnInsert: payload },
+      { upsert: true, new: true }
+    );
+  } else {
+    if (rides.has(payload.rideId)) {
+      savedRide = rides.get(payload.rideId);
+    } else {
+      savedRide = new Ride(payload);
+      rides.set(payload.rideId, savedRide);
+    }
+  }
+
+  const serialized = serializeRide(savedRide);
+  await emitRideStatusChanged(serialized, { action: 'created' });
+  await emitRideCreated(serialized); // Notify matching-service
 
   return savedRide;
 }
@@ -231,14 +283,14 @@ async function assignDriver(rideId, driverId) {
     throw new Error('driverId is required');
   }
 
+  // Phase 4: Matching-service assigns a driver, but we wait for acceptance
   if (ride.status !== RIDE_STATUS.SEARCHING) {
     throw new Error(`Cannot assign driver to ride in ${ride.status} status`);
   }
 
   if (usesMongo()) {
     ride.driverId = driverId;
-    ride.status = RIDE_STATUS.DRIVER_ASSIGNED;
-    ride.updatedAt = new Date();
+    ride.status = RIDE_STATUS.WAITING_FOR_ACCEPTANCE;
     await ride.save();
     await emitDriverAssigned(ride);
     await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
@@ -246,10 +298,41 @@ async function assignDriver(rideId, driverId) {
   }
 
   ride.driverId = driverId;
-  ride.updateStatus(RIDE_STATUS.DRIVER_ASSIGNED);
+  ride.updateStatus(RIDE_STATUS.WAITING_FOR_ACCEPTANCE);
   await saveRide(ride);
   await emitDriverAssigned(ride);
   await emitRideStatusChanged(serializeRide(ride), { action: 'assigned' });
+  return ride;
+}
+
+async function acceptRide(rideId, driverId) {
+  const ride = await getRideById(rideId);
+  if (!ride) {
+    throw new Error('Ride not found');
+  }
+
+  if (ride.driverId !== driverId) {
+    throw new Error('Unauthorized: Driver ID mismatch');
+  }
+
+  if (ride.status !== RIDE_STATUS.WAITING_FOR_ACCEPTANCE) {
+    throw new Error(`Cannot accept ride in ${ride.status} status`);
+  }
+
+  if (usesMongo()) {
+    ride.status = RIDE_STATUS.ACCEPTED;
+    await ride.save();
+  } else {
+    ride.status = RIDE_STATUS.ACCEPTED;
+    ride.updatedAt = new Date().toISOString();
+    await saveRide(ride);
+  }
+
+  await emitRideStatusChanged(serializeRide(ride), {
+    action: 'accepted',
+    driverId
+  });
+
   return ride;
 }
 
@@ -280,9 +363,8 @@ async function updateRideLocation(rideId, driverId, location) {
 
   if (usesMongo()) {
     ride.currentLocation = location;
-    ride.updatedAt = new Date();
 
-    if (ride.status === RIDE_STATUS.DRIVER_ASSIGNED) {
+    if (ride.status === RIDE_STATUS.ACCEPTED) {
       ride.status = RIDE_STATUS.DRIVER_ARRIVING;
     }
 
@@ -312,12 +394,12 @@ async function updateRideLocation(rideId, driverId, location) {
   ride.currentLocation = location;
   ride.updatedAt = new Date().toISOString();
 
-  if (ride.status === RIDE_STATUS.DRIVER_ASSIGNED) {
+  if (ride.status === RIDE_STATUS.ACCEPTED) {
     ride.status = RIDE_STATUS.DRIVER_ARRIVING;
   }
 
   if (
-    ride.status === RIDE_STATUS.DRIVER_ASSIGNED ||
+    ride.status === RIDE_STATUS.ACCEPTED ||
     ride.status === RIDE_STATUS.DRIVER_ARRIVING
   ) {
     ride.etaMinutes = await calculateETA(location, ride.pickup);
@@ -350,12 +432,12 @@ async function startRide(rideId, driverId) {
   }
 
   if (
-    ![RIDE_STATUS.DRIVER_ASSIGNED, RIDE_STATUS.DRIVER_ARRIVING].includes(
+    ![RIDE_STATUS.ACCEPTED, RIDE_STATUS.DRIVER_ASSIGNED, RIDE_STATUS.DRIVER_ARRIVING].includes(
       ride.status
     )
   ) {
     throw new Error(
-      `Cannot start ride in ${ride.status} status. Must be in DRIVER_ASSIGNED or DRIVER_ARRIVING`
+      `Cannot start ride in ${ride.status} status. Must be in ACCEPTED, DRIVER_ASSIGNED or DRIVER_ARRIVING`
     );
   }
 
@@ -528,16 +610,32 @@ async function clearAllRides() {
   rides.clear();
 }
 
-module.exports = {
+export default {
   createRide,
   getRideById,
   getRidesByUserId,
   getRidesByDriverId,
-  assignDriver,
+  acceptRide,
   updateRideLocation,
   startRide,
   completeRide,
   cancelRide,
+  getHistoryByDriverId,
   getRideStatistics,
   clearAllRides,
+};
+
+export {
+    createRide,
+    getRideById,
+    getRidesByUserId,
+    getRidesByDriverId,
+    acceptRide,
+    updateRideLocation,
+    startRide,
+    completeRide,
+    cancelRide,
+    getHistoryByDriverId,
+    getRideStatistics,
+    clearAllRides,
 };

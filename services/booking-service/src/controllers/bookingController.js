@@ -127,9 +127,17 @@ export const createBooking = async (req, res) => {
                 amount: lockedPrice.amount,
                 currency: 'VND',
                 surgeMultiplier: lockedPrice.surgeMultiplier
-            } : undefined
+            } : (req.body.price ? {
+                amount: req.body.price,
+                currency: 'VND',
+                surgeMultiplier: 1.0
+            } : undefined)
         });
 
+        console.log(`[Booking] Creating new booking:
+            Pickup: ${newBooking.pickup.address} (${newBooking.pickup.lat}, ${newBooking.pickup.lng})
+            Drop: ${newBooking.drop.address} (${newBooking.drop.lat}, ${newBooking.drop.lng})`);
+        
         await newBooking.save();
 
         // Publish đúng contract kiến trúc để matching/ETA consume ổn định.
@@ -143,6 +151,10 @@ export const createBooking = async (req, res) => {
             drop: newBooking.drop,
             paymentMethod: newBooking.paymentMethod,
             vehicleType: newBooking.vehicleType,
+            rideType: newBooking.vehicleType,
+            distanceKm: newBooking.distanceKm,
+            quoteId: newBooking.quoteId,
+            priceSnapshot: newBooking.priceSnapshot ? newBooking.priceSnapshot.amount : 0,
             timestamp: newBooking.createdAt
         });
 

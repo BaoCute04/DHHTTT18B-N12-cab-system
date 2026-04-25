@@ -1,34 +1,44 @@
-/**
- * Ride Service - Entry Point
- * Main server setup and initialization
- */
+import 'dotenv/config';
+import express from 'express';
+import { getEnv } from './src/config/env.js';
+import { createApp } from './src/app.js';
+import { connectMongo, disconnectMongo } from './src/database/mongoose.js';
+import { startPaymentConsumer, stopPaymentConsumer } from './src/events/paymentConsumer.js';
+import { startBookingConsumer, stopBookingConsumer } from './src/events/bookingConsumer.js';
+import messageBroker from './src/utils/messageBroker.js';
+import { startServiceServers } from '../../platform/node/start-servers.cjs';
 
-require('dotenv').config();
-
-const { startServiceServers } = require('../../platform/node/start-servers.cjs');
-const { createApp } = require('./src/app');
-const { connectMongo } = require('./src/database/mongoose');
-
-// Create Express app
+const env = getEnv();
 const app = createApp();
 let runtime = null;
 
 async function startServer() {
   try {
-    await connectMongo();
+    const mongoUri = process.env.MONGODB_URI || 'mongodb://ride-mongodb:27017/cab_booking_ride';
+    await connectMongo(mongoUri);
     console.log('[MongoDB] Connected');
   } catch (error) {
     console.warn('[MongoDB] Connection skipped or failed:', error.message);
   }
 
   try {
-    const messageBroker = require('./src/utils/messageBroker');
+    // START KAFKA CONSUMERS
     await messageBroker.connect();
+    
+    console.log('[Kafka] Starting Payment Consumer...');
+    await startPaymentConsumer(env);
+    console.log('[Kafka] Payment Consumer started.');
+    
+    console.log('[Kafka] Starting Booking Consumer...');
+    await startBookingConsumer(env);
+    console.log('[Kafka] Booking Consumer started.');
+    
+    console.log('[Kafka] All consumers (Payment, Booking) started');
   } catch (error) {
-    console.warn('[Kafka] Connection skipped or failed:', error.message);
+    console.warn('[Kafka] Consumers failed to start:', error.message);
   }
 
-  const port = Number(process.env.PORT || 3109);
+  const port = env.port || 3109;
   runtime = await startServiceServers({
     app,
     env: process.env,
@@ -42,15 +52,15 @@ async function startServer() {
   console.log(`Port: ${port}`);
   console.log(`REST API: http://localhost:${port}/api/v1/rides`);
   console.log(`Health: http://localhost:${port}/health`);
-  if (runtime.internalPort) {
-    console.log(`Internal mTLS: https://ride-service:${runtime.internalPort}`);
-  }
   console.log(`Realtime events: Kafka -> notification-service`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 }
 
 async function shutdown(signal) {
   console.log(`[ride-service] received ${signal}, shutting down...`);
+  await stopBookingConsumer();
+  await stopPaymentConsumer();
+  await disconnectMongo();
   if (runtime) {
     await runtime.close();
   }

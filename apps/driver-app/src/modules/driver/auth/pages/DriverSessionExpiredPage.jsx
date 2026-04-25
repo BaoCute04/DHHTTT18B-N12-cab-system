@@ -1,4 +1,16 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth.js";
+
 export function DriverSessionExpiredPage() {
+  const navigate = useNavigate();
+  const { clearSession } = useAuth();
+
+  useEffect(() => {
+    // Ensure any residual session state is cleared on mount
+    clearSession();
+  }, [clearSession]);
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -26,7 +38,10 @@ export function DriverSessionExpiredPage() {
         </div>
 
         <div className="px-6 pb-8">
-          <button className="w-full rounded-xl bg-slate-900 text-white py-3.5 text-sm font-medium active:scale-[0.98]">
+          <button 
+            onClick={() => navigate("/driver/auth/login", { replace: true })}
+            className="w-full rounded-xl bg-slate-900 text-white py-3.5 text-sm font-medium active:scale-[0.98]"
+          >
             Đăng nhập lại
           </button>
         </div>

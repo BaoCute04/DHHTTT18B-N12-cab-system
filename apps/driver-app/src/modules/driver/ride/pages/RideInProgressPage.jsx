@@ -1,4 +1,36 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useDriverRide } from "@app/DriverRideProvider.jsx";
+import { rideApi } from "@/services/rideApi.js";
+import { request } from "@/services/httpClient.js";
+
 export function RideInProgressPage() {
+  const navigate = useNavigate();
+  const { currentRide, setCurrentRide } = useDriverRide();
+  const [loading, setLoading] = useState(false);
+
+  const handleCompleteRide = async () => {
+    if (!currentRide) return;
+
+    setLoading(true);
+    try {
+      const result = await rideApi.completeRide(currentRide.rideId, currentRide.driverId);
+      
+      if (result.success || result.data) {
+        const finalRide = result.data || result;
+        setCurrentRide(finalRide);
+        navigate("/driver/ride/complete", { state: { ride: finalRide } });
+      } else {
+        alert(result.message || "Failed to complete ride");
+      }
+    } catch (error) {
+      console.error("Complete ride error:", error);
+      alert(error.message || "Đã có lỗi xảy ra.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -24,21 +56,21 @@ export function RideInProgressPage() {
         <div className="px-6 pb-8">
           <div className="rounded-2xl bg-white border shadow-sm p-4 mb-4">
             <p className="text-sm font-medium mb-1">Điểm đến</p>
-            <p className="text-xs text-slate-500">Vincom Đồng Khởi, Quận 1</p>
+            <p className="text-xs text-slate-500 truncate">{currentRide?.destination?.address || "Đang xác định..."}</p>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4 mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span>Quãng đường còn lại</span>
-              <span>3.4 km</span>
+              <span>{Number(currentRide?.distanceKm || 0).toFixed(1)} km</span>
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span>Thời gian dự kiến</span>
-              <span>10 phút</span>
+              <span>{currentRide?.etaMinutes || Math.ceil((currentRide?.distanceKm || 0) * 2) || 10} phút</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Thu nhập</span>
-              <span>45.000đ</span>
+              <span>{(currentRide?.priceSnapshot || currentRide?.estimatedPrice || 45000).toLocaleString()}đ</span>
             </div>
           </div>
 
@@ -46,7 +78,14 @@ export function RideInProgressPage() {
             <button className="flex-1 rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]">
               Gọi khách
             </button>
-            <button className="flex-1 rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98]">
+            <button
+              className={`flex-1 rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98] flex items-center justify-center gap-2 ${
+                loading ? "opacity-70 pointer-events-none" : ""
+              }`}
+              onClick={handleCompleteRide}
+              disabled={loading}
+            >
+              {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
               Kết thúc chuyến
             </button>
           </div>

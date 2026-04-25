@@ -1,4 +1,49 @@
+import { useEffect, useContext } from "react";
+import { useNavigate } from "react-router-dom";
+import { useBooking } from "@app/BookingProvider.jsx";
+import { RealtimeContext } from "@app/RealtimeProvider.jsx";
+import { AuthContext } from "@app/AuthProvider.jsx";
+
 export function SearchingDriverPage() {
+  const navigate = useNavigate();
+  const { booking, selectedRideOption, setRide } = useBooking();
+  const { connect, connection, disconnect } = useContext(RealtimeContext);
+  const { session } = useContext(AuthContext);
+
+  useEffect(() => {
+    if (!booking) {
+      navigate("/customer/booking/pickup");
+      return;
+    }
+
+    const conn = connect({
+      client: "customer",
+      token: session?.accessToken,
+      onMessage: (data) => {
+        try {
+          const message = JSON.parse(data);
+          if (message.type === "ride.assigned" || message.type === "ride.status.changed") {
+            const payload = message.payload || message;
+            if (payload?.bookingId === booking.bookingId || payload?.rideId === booking.bookingId) {
+              setRide(payload);
+              // Chỉ chuyển trang khi tài xế đã thực sự chấp nhận (ACCEPTED)
+              if (payload.status === "ACCEPTED") {
+                navigate("/customer/ride/driver-assigned");
+              }
+            }
+          }
+        } catch (e) {
+          console.error("WS Message Error:", e);
+        }
+      }
+    });
+
+    return () => {
+      // Don't disconnect here if we want to keep receiving updates in the next page
+      // but we should probably manage connection at a higher level
+    };
+  }, [booking, connect, navigate, session?.accessToken, setRide]);
+
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden relative">
@@ -27,19 +72,22 @@ export function SearchingDriverPage() {
           <div className="rounded-2xl bg-slate-50 p-4 mb-5">
             <div className="flex justify-between text-sm mb-2">
               <span>Loại xe</span>
-              <span>🚗 Car</span>
+              <span className="capitalize">🚗 {selectedRideOption?.type}</span>
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span>Khoảng cách</span>
-              <span>5.2 km</span>
+              <span>{selectedRideOption?.distance?.toFixed(1) || "..."} km</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Giá dự kiến</span>
-              <span>45.000đ</span>
+              <span>{selectedRideOption?.price.toLocaleString()}đ</span>
             </div>
           </div>
 
-          <button className="w-full rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]">
+          <button
+            className="w-full rounded-xl border border-slate-300 py-3 text-sm font-medium text-slate-700 active:scale-[0.98]"
+            onClick={() => navigate("/customer/booking/pickup")}
+          >
             Huỷ chuyến
           </button>
         </div>

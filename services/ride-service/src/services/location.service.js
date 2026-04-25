@@ -5,8 +5,8 @@
 
 'use strict';
 
-const Redis = require('ioredis');
-const { calculateETA } = require('./eta.service');
+import Redis from 'ioredis';
+import { calculateETA } from './eta.service.js';
 
 const GEO_KEY = process.env.RIDE_REDIS_GEO_KEY || 'cab:ride:drivers:geo';
 const META_KEY = process.env.RIDE_REDIS_META_KEY || 'cab:ride:drivers:meta';
@@ -286,7 +286,7 @@ function toRadians(value) {
   return (Number(value) * Math.PI) / 180;
 }
 
-module.exports = {
+export {
   updateDriverLocation,
   getDriverLocation,
   hasActiveLocation,

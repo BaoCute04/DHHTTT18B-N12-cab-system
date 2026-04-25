@@ -60,6 +60,6 @@ function sanitizeMetadata(metadata) {
   );
 }
 
-module.exports = {
+export {
   recordAuditEvent
 };

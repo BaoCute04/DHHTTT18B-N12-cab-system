@@ -1,4 +1,14 @@
+import { useNavigate } from "react-router-dom";
+import { useDriverRide } from "@app/DriverRideProvider.jsx";
+
 export function NavigateToPickupPage() {
+  const navigate = useNavigate();
+  const { currentRide } = useDriverRide();
+
+  const handleArrived = () => {
+    navigate("/driver/ride/start");
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-slate-100">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden flex flex-col">
@@ -24,23 +34,26 @@ export function NavigateToPickupPage() {
         <div className="px-6 pb-8">
           <div className="rounded-2xl bg-white border shadow-sm p-4 mb-4">
             <p className="text-sm font-medium mb-1">Điểm đón</p>
-            <p className="text-xs text-slate-500">123 Lê Lợi, Quận 1</p>
+            <p className="text-xs text-slate-500">{currentRide?.pickup?.address || "Đang xác định..."}</p>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4 mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span>Khoảng cách</span>
-              <span>2.1 km</span>
+              <span>{Number(currentRide?.distanceKm || 0).toFixed(1)} km</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span>Thời gian đến</span>
-              <span>5 phút</span>
+            <div className="flex justify-between text-sm mb-2">
+              <span>Thời gian dự kiến</span>
+              <span>{currentRide?.etaMinutes || Math.ceil((currentRide?.distanceKm || 0) * 2) || 10} phút</span>
             </div>
           </div>
 
           <div className="mb-4">
-            <button className="w-full rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98]">
-              Bắt đầu điều hướng
+            <button 
+              className="w-full rounded-xl bg-slate-900 text-white py-3 text-sm font-medium active:scale-[0.98]"
+              onClick={handleArrived}
+            >
+              Tôi đã đến điểm đón
             </button>
           </div>
 

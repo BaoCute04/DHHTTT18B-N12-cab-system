@@ -284,6 +284,9 @@ services:
         condition: service_started
       kafka:
         condition: service_started
+    volumes:
+      - ../../services/ride-service:/app/services/ride-service
+      - /app/services/ride-service/node_modules
     networks:
       - cab-services
       - ride-data

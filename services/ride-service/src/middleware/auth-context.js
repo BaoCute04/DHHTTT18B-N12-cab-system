@@ -1,4 +1,4 @@
-const { validateForwardedAuthTrust } = require('../../../../platform/node/forwarded-auth-guard.cjs');
+import { validateForwardedAuthTrust } from '../../../../platform/node/forwarded-auth-guard.cjs';
 
 function authContextMiddleware(req, res, next) {
   const trustCheck = validateForwardedAuthTrust({
@@ -97,7 +97,7 @@ function normalizeValue(value) {
   return normalized || null;
 }
 
-module.exports = {
+export {
   authContextMiddleware,
   isAdminActor,
   isAuthenticatedActor

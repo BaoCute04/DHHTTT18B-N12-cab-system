@@ -1,4 +1,44 @@
+import { useBooking } from "@app/BookingProvider.jsx";
+import { useNavigate } from "react-router-dom";
+import { useEffect, useContext } from "react";
+import { RealtimeContext } from "@app/RealtimeProvider.jsx";
+
 export function DriverAssignedPage() {
+  const navigate = useNavigate();
+  const { ride, setRide } = useBooking();
+  const { connection } = useContext(RealtimeContext);
+
+  useEffect(() => {
+    if (!ride) {
+      navigate("/customer/booking/pickup");
+      return;
+    }
+
+    // Listen for ride status changes (STARTED)
+    if (connection) {
+      const handleMessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          const payload = message.payload || message;
+          if ((message.type === "ride.status.changed" || message.type === "ride.status.updated") && 
+              (payload?.rideId === ride.rideId || payload?.bookingId === ride.rideId)) {
+            
+            setRide(payload);
+            if (payload.status === "STARTED" || payload.status === "IN_PROGRESS") {
+              navigate("/customer/ride/tracking");
+            }
+          }
+        } catch (e) {
+          console.error("WS Error:", e);
+        }
+      };
+      
+      const target = connection.socket || connection;
+      target.addEventListener('message', handleMessage);
+      return () => target.removeEventListener('message', handleMessage);
+    }
+  }, [ride, navigate, connection, setRide]);
+
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm h-[760px] bg-white rounded-[28px] shadow-lg overflow-hidden relative">
@@ -21,31 +61,33 @@ export function DriverAssignedPage() {
           </div>
 
           <div className="flex items-center gap-4 mb-5">
-            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-xl">🚗</div>
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-xl">
+               {ride?.rideType === 'bike' ? '🛵' : '🚗'}
+            </div>
 
             <div className="flex-1">
-              <p className="text-sm font-semibold text-slate-900">Nguyễn Văn A</p>
-              <p className="text-xs text-slate-500 mt-0.5">⭐ 4.8 · 1.240 chuyến</p>
+              <p className="text-sm font-semibold text-slate-900">{ride?.driverName || "Tài xế của bạn"}</p>
+              <p className="text-xs text-slate-500 mt-0.5">⭐ 4.9 · Chuyến xe an toàn</p>
             </div>
 
             <div className="text-right">
-              <p className="text-xs text-slate-500">Đến sau</p>
-              <p className="text-sm font-semibold">5 phút</p>
+              <p className="text-xs text-slate-500">Đang tới</p>
+              <p className="text-sm font-semibold">{ride?.etaMinutes || Math.ceil((ride?.distanceKm || ride?.distance_km || 0) * 2) || 2} phút</p>
             </div>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4 mb-6">
             <div className="flex justify-between text-sm mb-2">
               <span>Loại xe</span>
-              <span>🚗 Car</span>
+              <span className="capitalize">{ride?.rideType || ride?.vehicleType || 'Car'}</span>
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span>Biển số</span>
-              <span>59A‑123.45</span>
+              <span>{ride?.vehicleInfo?.plateNumber || ride?.plateNumber || "59-CAB.123"}</span>
             </div>
             <div className="flex justify-between text-sm font-semibold">
               <span>Giá chuyến đi</span>
-              <span>45.000đ</span>
+              <span>{(ride?.price || ride?.priceSnapshot || ride?.estimatedPrice || 0).toLocaleString()}đ</span>
             </div>
           </div>
 
@@ -57,8 +99,6 @@ export function DriverAssignedPage() {
               Huỷ chuyến
             </button>
           </div>
-
-          <div className="h-4"></div>
         </div>
       </div>
     </div>

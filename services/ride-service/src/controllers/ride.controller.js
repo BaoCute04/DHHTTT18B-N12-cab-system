@@ -3,11 +3,11 @@
  * Handles HTTP requests for ride operations
  */
 
-const { v4: uuidv4 } = require('uuid');
-const rideService = require('../services/ride.service');
-const locationService = require('../services/location.service');
-const { isAdminActor, isAuthenticatedActor } = require('../middleware/auth-context');
-const { recordAuditEvent } = require('../utils/audit');
+import { v4 as uuidv4 } from 'uuid';
+import rideService from '../services/ride.service.js';
+import * as locationService from '../services/location.service.js';
+import { isAdminActor, isAuthenticatedActor } from '../middleware/auth-context.js';
+import { recordAuditEvent } from '../utils/audit.js';
 
 function generateRequestId() {
   return uuidv4();
@@ -290,6 +290,60 @@ async function assignDriver(req, res) {
       error
     });
     const statusCode = error.statusCode || (error.message === 'Ride not found' ? 404 : 400);
+    return res.status(statusCode).json(
+      createResponse({
+        success: false,
+        message: error.message,
+        statusCode,
+      })
+    );
+  }
+}
+
+async function acceptRide(req, res) {
+  try {
+    const requestId = generateRequestId();
+    const actor = requireAuthenticatedActor(req);
+    const { rideId } = req.params;
+    const actorId = actor.userId || actor.subjectId;
+
+    // Only the assigned driver (or admin) can accept
+    if (actor.role !== 'Driver' && !isAdminActor(actor)) {
+      throw createHttpError(403, 'Only drivers or admins can accept rides');
+    }
+
+    const ride = await rideService.acceptRide(rideId, actorId);
+
+    auditRideSuccess(req, {
+      action: 'ride.accept',
+      targetType: 'ride',
+      targetId: ride.rideId || rideId,
+      metadata: {
+        driverId: actorId,
+        status: ride.status
+      }
+    });
+
+    return res.json(
+      createResponse({
+        success: true,
+        message: 'Ride accepted',
+        data: ride.toJSON(),
+        requestId,
+      })
+    );
+  } catch (error) {
+    recordAuditEvent(req, {
+      action: 'ride.accept',
+      targetType: 'ride',
+      targetId: req.params?.rideId || null,
+      outcome: 'failure',
+      metadata: {
+        driverId: req.auth?.userId || null
+      },
+      error
+    });
+    const statusCode = error.statusCode || 400;
     return res.status(statusCode).json(
       createResponse({
         success: false,
@@ -673,6 +727,52 @@ async function getStatistics(req, res) {
   }
 }
 
+async function getDriverHistory(req, res) {
+  try {
+    const requestId = generateRequestId();
+    const { driverId } = req.params;
+    const actor = requireAuthenticatedActor(req);
+
+    // Ensure the driver is accessing their own history or is an admin
+    enforceUserScope(actor, driverId);
+
+    const history = await rideService.getHistoryByDriverId(driverId);
+
+    auditRideSuccess(req, {
+      action: 'ride.list.driver.history',
+      targetType: 'driver',
+      targetId: driverId,
+      metadata: {
+        rideCount: history.length
+      }
+    });
+
+    return res.json(
+      createResponse({
+        success: true,
+        message: 'Driver ride history fetched',
+        data: history.map((ride) => ride.toJSON()),
+        requestId,
+      })
+    );
+  } catch (error) {
+    recordAuditEvent(req, {
+      action: 'ride.list.driver.history',
+      targetType: 'driver',
+      targetId: req.params?.driverId || null,
+      outcome: 'failure',
+      error
+    });
+    return res.status(error.statusCode || 500).json(
+      createResponse({
+        success: false,
+        message: error.message || 'Internal server error',
+        statusCode: error.statusCode || 500,
+      })
+    );
+  }
+}
+
 function auditRideSuccess(req, details) {
   recordAuditEvent(req, {
     outcome: 'success',
@@ -719,14 +819,16 @@ function createHttpError(statusCode, message) {
   return error;
 }
 
-module.exports = {
+export {
   createRide,
   getRide,
   getUserRides,
   assignDriver,
+  acceptRide,
   updateLocation,
   startRide,
   completeRide,
   cancelRide,
   getStatistics,
+  getDriverHistory,
 };
