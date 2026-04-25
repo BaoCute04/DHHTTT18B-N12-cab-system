@@ -1,0 +1,1 @@
+{"rideId": "ride_123", "candidates": [{"driver_id": "driver_1", "distance_km": 2.5, "driver_rating": 4.8, "driver_completed_trips": 150, "driver_acceptance_rate": 0.95, "historical_matching_score": 0.85, "eta_seconds": 300, "surge_multiplier": 1.2, "driver_busy_time": 15}], "max_distance_km": 5.0, "pickup_lat": 10.762622, "pickup_lng": 106.660172}
