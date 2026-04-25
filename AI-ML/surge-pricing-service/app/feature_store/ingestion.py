@@ -1,7 +1,10 @@
 import uuid
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+# Vietnam Standard Time = UTC+7 (no DST)
+_VN_UTC_OFFSET = timedelta(hours=7)
 
 from app.config import settings
 from app.database import get_mongo_db, get_redis
@@ -103,7 +106,7 @@ async def get_zone_metric(zone_id: str) -> dict | None:
     return doc
 
 
-async def record_demand_signal(zone_id: str, request_id: str, ttl_seconds: int = 300, source: str = "surge-demand-signal") -> dict:
+async def record_demand_signal(zone_id: str, request_id: str, ttl_seconds: int = 60, source: str = "surge-demand-signal") -> dict:
     redis = get_redis()
     demand_key = f"demand:zone:{zone_id}"
     await redis.sadd(demand_key, request_id)
@@ -111,7 +114,8 @@ async def record_demand_signal(zone_id: str, request_id: str, ttl_seconds: int =
 
     demand_count = int(await redis.scard(demand_key))
     supply_count = int(await redis.scard(f"supply:zone:{zone_id}"))
-    now = datetime.now(tz=timezone.utc)
+    now_utc = datetime.now(tz=timezone.utc)
+    now = now_utc + _VN_UTC_OFFSET  # Use Vietnam local time for hour_of_day
 
     zone_snapshot = {
         "zoneId": zone_id,
@@ -149,7 +153,7 @@ async def get_latest_context_features(zone_id: str) -> dict:
 async def build_online_zone_context(zone_id: str) -> tuple[dict, str]:
     metric_snapshot = await get_zone_metric(zone_id)
     context_features = await get_latest_context_features(zone_id)
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=timezone.utc) + _VN_UTC_OFFSET  # Vietnam local time for hour_of_day
 
     if metric_snapshot:
         snapshot = dict(metric_snapshot)
@@ -158,18 +162,39 @@ async def build_online_zone_context(zone_id: str) -> tuple[dict, str]:
         snapshot["avg_speed_kmh"] = float(snapshot.get("avg_speed_kmh", context_features["avg_speed_kmh"]))
         snapshot["rain_indicator"] = int(snapshot.get("rain_indicator", context_features["rain_indicator"]))
         snapshot["event_flag"] = int(snapshot.get("event_flag", context_features["event_flag"]))
+
+        # [REPAIR] If supply_count is 0 in metrics, double-check live Redis set.
+        # This fixes the sync delay where a driver just went online.
+        if float(snapshot.get("supply_count", 0)) <= 0:
+            try:
+                redis = get_redis()
+                live_supply = await redis.scard(f"supply:zone:{zone_id}")
+                if live_supply > 0:
+                    snapshot["supply_count"] = float(live_supply)
+                    snapshot["source"] = "redis-live-sync-repair"
+            except Exception:
+                pass
+
         return snapshot, snapshot.get("metricsSource", "zone-metrics")
+
+    # If no snapshot at all, try to get live supply count from Redis
+    live_supply = 0.0
+    try:
+        redis = get_redis()
+        live_supply = float(await redis.scard(f"supply:zone:{zone_id}"))
+    except Exception:
+        pass
 
     snapshot = {
         "zoneId": zone_id,
         "demand_count": 0.0,
-        "supply_count": 0.0,
+        "supply_count": live_supply,
         "avg_speed_kmh": float(context_features["avg_speed_kmh"]),
         "rain_indicator": int(context_features["rain_indicator"]),
         "event_flag": int(context_features["event_flag"]),
         "hour_of_day": now.hour,
         "day_of_week": now.weekday(),
         "updatedAt": now.isoformat(),
-        "source": "feature-store-context",
+        "source": "feature-store-context" if live_supply <= 0 else "redis-live-initial",
     }
     return snapshot, "feature-store-context"
