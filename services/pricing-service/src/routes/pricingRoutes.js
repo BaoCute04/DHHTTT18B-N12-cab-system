@@ -1,20 +1,23 @@
 import express from 'express';
 import Joi from 'joi';
-import { getQuote, getSurge } from '../controllers/pricingController.js';
+import axios from 'axios';
+import { getQuote } from '../controllers/pricingController.js';
 
 const router = express.Router();
 
 // Schema kiểm tra dữ liệu đầu vào (Validation)
 const quoteSchema = Joi.object({
-    pickupAddress: Joi.string().required(),
+    pickupAddress: Joi.string().optional(),
     destinationAddress: Joi.string().required(),
     vehicleType: Joi.string().valid('bike', 'standard', 'premium', 'suv').required(),
-    distanceKm: Joi.number().positive().required(),
-    durationMin: Joi.number().positive().required(),
-    
-    // THÊM 2 TRƯỜNG NÀY ĐỂ TEST CUNG - CẦU
-    demandIndex: Joi.number().min(0).optional(), // Có thể = 0 (Không ai đặt)
-    supplyIndex: Joi.number().min(0).optional()  // Có thể = 0 (Không có tài xế)
+    distanceKm: Joi.number().positive().optional(),
+    durationMin: Joi.number().positive().optional(),
+
+    // TỌA ĐỘ - Bắt buộc để Middleware có thể tính toán
+    pickupLat: Joi.number().min(-90).max(90).required(),
+    pickupLng: Joi.number().min(-180).max(180).required(),
+    dropLat: Joi.number().min(-90).max(90).required(),
+    dropLng: Joi.number().min(-180).max(180).required()
 });
 
 const validateQuote = (req, res, next) => {
@@ -29,6 +32,5 @@ const validateQuote = (req, res, next) => {
 };
 
 router.post('/quote', validateQuote, getQuote);
-router.get('/surge', getSurge);
 
 export default router;

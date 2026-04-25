@@ -36,6 +36,7 @@ export const aiTopology = {
     }
   },
   mlPlatform: {
+    displayName: "ML Platform",
     featureStore: "Feature Store",
     modelTraining: "Model Training",
     modelServingApi: "Model Serving API"
@@ -64,13 +65,14 @@ export const aiTopology = {
       ],
       output: "ETA Result"
     },
-    surgePricingModel: {
-      displayName: "Surge Pricing Model",
+    surgePricingService: {
+      displayName: "Surge Pricing Service",
       purpose: "Dynamic Fare",
       inputs: [
         "Trip History",
         "Booking Service",
-        "Pricing Service"
+        "Pricing Service",
+        "Driver Service"
       ],
       output: "Dynamic Fare"
     }
@@ -118,7 +120,7 @@ export const aiTopology = {
     },
     {
       source: "tripHistory",
-      target: "surgePricingModel",
+      target: "surgePricingService",
       label: "historical demand"
     },
     {
@@ -143,13 +145,18 @@ export const aiTopology = {
     },
     {
       source: "pricing-service",
-      target: "surgePricingModel",
+      target: "surgePricingService",
       label: "pricing context"
     },
     {
       source: "booking-service",
-      target: "surgePricingModel",
+      target: "surgePricingService",
       label: "demand context"
+    },
+    {
+      source: "driver-service",
+      target: "surgePricingService",
+      label: "supply context"
     },
     {
       source: "gpsLocationData",
@@ -188,7 +195,7 @@ export const aiTopology = {
     },
     {
       source: "modelServingApi",
-      target: "surgePricingModel",
+      target: "surgePricingService",
       label: "serving inference"
     },
     {
@@ -197,7 +204,7 @@ export const aiTopology = {
       label: "Best Driver"
     },
     {
-      source: "surgePricingModel",
+      source: "surgePricingService",
       target: "pricing-service",
       label: "Dynamic Fare"
     },
@@ -237,7 +244,7 @@ export function getAiProfileForService(serviceKey) {
       integrations: [
         "Matching Service",
         "ETA Prediction Model",
-        "Surge Pricing Model"
+        "Surge Pricing Service"
       ]
     };
   }
@@ -247,7 +254,7 @@ export function getAiProfileForService(serviceKey) {
       service: serviceKey,
       role: "AI pricing consumer",
       integrations: [
-        "Surge Pricing Model"
+        "Surge Pricing Service"
       ]
     };
   }

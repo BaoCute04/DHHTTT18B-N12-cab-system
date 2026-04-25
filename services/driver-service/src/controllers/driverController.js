@@ -8,6 +8,11 @@ import {
 } from "../utils/index.js";
 import { findDriver, listAvailableDrivers, upsertDriver, updateDriverStatus, updateDriverLocation } from "../models/Driver.js";
 
+import { publishDriverEvent } from "../services/kafka-publisher.js";
+
+import { publishDriverToZone, removeDriverFromZone, publishDriverToGeo } from "../utils/redis.js";
+
+
 export async function getAvailableDrivers(request, response) {
   try {
     const availableDrivers = await listAvailableDrivers();
@@ -65,6 +70,13 @@ export async function patchDriver(request, response) {
 
     const message = existingDriver ? "Driver updated" : "Driver created";
 
+    // [NHIỆM VỤ 1] Nếu ONLINE thì đẩy vào Redis Geo và Zone
+    if (driver.status === DRIVER_STATUS.ONLINE && driver.location?.lat && driver.location?.lng) {
+      await publishDriverToGeo(request.params.driverId, driver.location.lat, driver.location.lng);
+      await publishDriverToZone(request.params.driverId, driver.location.lat, driver.location.lng);
+      console.log(`[STRICT-DEBUG] Dispatched both Geo and Zone for ${request.params.driverId}`);
+    }
+
     return response.json(
       createResponse({
         message,
@@ -94,6 +106,13 @@ export async function goOnline(request, response) {
       return createErrorResponse(response, 500, "Failed to update driver status", request);
     }
 
+    // [NHIỆM VỤ 1] Khi Go Online, đẩy tọa độ vào Redis Geo và Zone
+    if (updatedDriver.location?.lat && updatedDriver.location?.lng) {
+      await publishDriverToGeo(request.params.driverId, updatedDriver.location.lat, updatedDriver.location.lng);
+      await publishDriverToZone(request.params.driverId, updatedDriver.location.lat, updatedDriver.location.lng);
+      console.log(`[STRICT-DEBUG] goOnline dispatched for ${request.params.driverId}`);
+    }
+
     return response.json(
       createResponse({
         message: "Driver is now ONLINE",
@@ -112,6 +131,15 @@ export async function goOffline(request, response) {
     const driver = await findDriver(request.params.driverId);
     if (!driver) {
       return createErrorResponse(response, 404, "Driver not found", request);
+    }
+
+    // Xóa tài xế khỏi Supply zone trước khi đổi trạng thái
+    if (driver.location?.lat != null && driver.location?.lng != null) {
+      await removeDriverFromZone(
+        request.params.driverId,
+        driver.location.lat,
+        driver.location.lng
+      );
     }
 
     const updatedDriver = await updateDriverStatus(request.params.driverId, {
@@ -153,6 +181,32 @@ export async function updateLocation(request, response) {
     if (!updatedDriver) {
       return createErrorResponse(response, 500, "Failed to update location", request);
     }
+
+
+    await publishDriverEvent(
+      "driver.location.updated",
+      {
+        eventType: "DriverLocationUpdated",
+        driverId: request.params.driverId,
+        location: {
+          lat: payload.lat,
+          lng: payload.lng,
+          address: payload.address ?? null
+        },
+        updatedAt: new Date().toISOString()
+      },
+      request.params.driverId
+    );
+
+    // Publish vị trí tài xế vào Redis Supply zone (chỉ khi đang ONLINE)
+    if (driver.status === DRIVER_STATUS.ONLINE) {
+      await publishDriverToZone(
+        request.params.driverId,
+        payload.lat,
+        payload.lng
+      );
+    }
+
 
     return response.json(
       createResponse({

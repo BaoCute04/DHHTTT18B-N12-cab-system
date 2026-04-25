@@ -5,7 +5,7 @@ export const serviceManifests = {
     port: 3101,
     gatewayPath: "/api/v1/pricing",
     protocols: ["REST", "Kafka"],
-    dataStores: ["postgresql"],
+    dataStores: ["mongodb", "redis"],
     publishes: [],
     consumes: []
   },
@@ -69,6 +69,27 @@ export const serviceManifests = {
     publishes: ["DriverAssigned", "DriverLocationUpdated"],
     consumes: []
   },
+  "matching-service": {
+    key: "matching-service",
+    displayName: "Matching Service",
+    port: 8000,
+    gatewayPath: "/api/v1/matching",
+    protocols: ["REST", "Kafka"],
+    dataStores: ["mongodb", "redis"],
+    publishes: ["DriverAssigned"],
+    consumes: []
+  },
+  "surge-pricing-service": {
+    key: "surge-pricing-service",
+    displayName: "Surge Pricing Service",
+    port: 8001,
+    gatewayPath: "/internal/surge-pricing",
+    protocols: ["REST", "Kafka"],
+    dataStores: ["mongodb", "redis"],
+    publishes: ["SurgePriceUpdated"],
+    consumes: ["DriverLocationUpdated"],
+    exposeViaGateway: false
+  },
   "notification-service": {
     key: "notification-service",
     displayName: "Notification Service",
@@ -88,6 +109,16 @@ export const serviceManifests = {
     dataStores: ["mongodb", "redis"],
     publishes: ["RideStatusChanged"],
     consumes: ["RideCreated", "PaymentSuccess"]
+  },
+  "eta-service": {
+    key: "eta-service",
+    displayName: "ETA Service",
+    port: 3110,
+    gatewayPath: "/api/v1/eta",
+    protocols: ["REST", "Kafka"],
+    dataStores: ["redis"],
+    publishes: ["EtaResult"],
+    consumes: ["DriverLocationUpdated"]
   }
 };
 

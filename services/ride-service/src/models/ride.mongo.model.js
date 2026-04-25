@@ -1,12 +1,16 @@
-const { Schema, model } = require('mongoose');
+import mongoose from 'mongoose';
+const { Schema, model } = mongoose;
 
 const RideStatus = {
+  REQUESTED: 'REQUESTED',
   SEARCHING: 'SEARCHING',
-  DRIVER_ASSIGNED: 'DRIVER_ASSIGNED',
+  WAITING_FOR_ACCEPTANCE: 'WAITING_FOR_ACCEPTANCE',
+  ACCEPTED: 'ACCEPTED',
   DRIVER_ARRIVING: 'DRIVER_ARRIVING',
   IN_PROGRESS: 'IN_PROGRESS',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
+  FAILED_NO_DRIVER: 'FAILED_NO_DRIVER',
 };
 
 const coordinateSchema = new Schema(
@@ -27,9 +31,16 @@ const rideSchema = new Schema(
     status: {
       type: String,
       enum: Object.values(RideStatus),
-      default: RideStatus.SEARCHING,
+      default: RideStatus.REQUESTED,
       index: true,
     },
+    // Financial Data
+    quoteId: { type: String, default: null },
+    priceSnapshot: { type: Number, default: 0 },
+    distanceKm: { type: Number, default: 0 },
+    rideType: { type: String, default: 'bike' },
+    paymentStatus: { type: String, default: 'PENDING' },
+    paymentId: { type: String, default: null },
     pickup: { type: coordinateSchema, required: true },
     destination: { type: coordinateSchema, required: true },
     currentLocation: { type: coordinateSchema, default: null },
@@ -51,10 +62,8 @@ rideSchema.set('toJSON', {
   },
 });
 
-const RideMongoModel = model('Ride', rideSchema);
+export const RideMongoModel = model('Ride', rideSchema);
 
-module.exports = {
-  RideMongoModel,
-  RideStatus,
+export {
   rideSchema,
 };

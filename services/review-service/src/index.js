@@ -20,8 +20,10 @@ import { getResilienceProfileForService } from "../../../platform/architecture/r
 import { getSecurityProfileForService } from "../../../platform/architecture/security-topology.js";
 import express from "express";
 import { createReviewRouter } from "./routes.js";
+import startServersModule from "../../../platform/node/start-servers.cjs";
 
 async function startReviewService() {
+  const { startServiceServers } = startServersModule;
   const serviceKey = "review-service";
   const manifest = getServiceManifest(serviceKey);
 
@@ -103,9 +105,18 @@ async function startReviewService() {
     });
   });
 
-  app.listen(port, () => {
-    console.log(`[${manifest.key}] listening on port ${port}`);
+  const runtime = await startServiceServers({
+    app,
+    env: process.env,
+    publicPort: port,
+    serviceName: manifest.key,
+    logger: console
   });
+
+  console.log(`[${manifest.key}] listening on port ${port}`);
+  if (runtime.internalPort) {
+    console.log(`[${manifest.key}] internal mTLS listening on ${runtime.internalPort}`);
+  }
 }
 
 startReviewService().catch((error) => {

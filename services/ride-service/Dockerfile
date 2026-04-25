@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY services/ride-service/package.json services/ride-service/package.json
+COPY platform platform
 COPY services/ride-service services/ride-service
 
 RUN npm ci --workspace @cab/ride-service --include-workspace-root

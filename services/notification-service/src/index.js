@@ -1,43 +1,46 @@
-import { loadNotificationEnv } from "./load-env.js";
 import { createNotificationApp } from "./app.js";
+import { loadNotificationEnv } from "./load-env.js";
+import { startRealtimeRelay } from "./realtime-relay.js";
+import mtlsClient from "../../../platform/node/mtls-client.cjs";
+import startServersModule from "../../../platform/node/start-servers.cjs";
 
 loadNotificationEnv();
+const { createMtlsFetch } = mtlsClient;
+const { startServiceServers } = startServersModule;
+const internalFetch = createMtlsFetch({ env: process.env, prefix: "INTERNAL_TLS" });
 
-async function main() {
-  const runtime = await createNotificationApp();
-  const port = Number(process.env.PORT || runtime.manifest.port);
+const runtime = await createNotificationApp({
+  logger: console
+});
 
-  const server = runtime.app.listen(port, () => {
-    console.log(`[${runtime.manifest.key}] listening on port ${port}`);
-  });
+const port = Number.parseInt(process.env.PORT || "3108", 10);
+const serverRuntime = await startServiceServers({
+  app: runtime.app,
+  env: process.env,
+  publicPort: port,
+  serviceName: "notification-service",
+  logger: console
+});
 
-  async function shutdown() {
-    await runtime.close();
+let realtimeRelay = await startRealtimeRelay({
+  fetchImpl: internalFetch,
+  logger: console
+}).catch((error) => {
+  console.error("[notification-service] failed to start realtime relay", error);
+  return null;
+});
 
-    await new Promise((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+async function shutdown(signal) {
+  console.log(`[notification-service] received ${signal}, shutting down...`);
 
-        resolve();
-      });
-    });
+  if (realtimeRelay) {
+    await realtimeRelay.close();
   }
 
-  process.on("SIGINT", async () => {
-    await shutdown();
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    await shutdown();
-    process.exit(0);
-  });
+  await runtime.close();
+  await serverRuntime.close();
+  process.exit(0);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

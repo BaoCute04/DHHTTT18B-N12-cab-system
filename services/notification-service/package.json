@@ -5,12 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "node src/index.js",
-    "start": "node src/index.js",
-    "test": "node --test --experimental-test-isolation=none ./test/notification-service.test.js"
+    "start": "node src/index.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
     "kafkajs": "^2.2.4",
-    "mongodb": "^7.1.1"
+    "express": "^4.21.2",
+    "mongodb": "^6.16.0"
   }
 }

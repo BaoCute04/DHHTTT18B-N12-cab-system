@@ -11,6 +11,9 @@ services:
       - ../../gateway/api-gateway/.env.docker
     ports:
       - "3000:3000"
+    volumes:
+      - ../../gateway/api-gateway:/app/gateway/api-gateway
+      - /app/gateway/api-gateway/node_modules
     depends_on:
       auth-service:
         condition: service_started
@@ -22,6 +25,8 @@ services:
         condition: service_started
       pricing-service:
         condition: service_started
+      matching-service:
+        condition: service_started
       review-service:
         condition: service_started
       driver-service:
@@ -29,6 +34,8 @@ services:
       notification-service:
         condition: service_started
       ride-service:
+        condition: service_started
+      eta-service:
         condition: service_started
     networks:
       - cab-edge
@@ -64,14 +71,20 @@ services:
       - ../../services/booking-service/.env.docker
     expose:
       - "3103"
+    volumes:
+      - ../../services/booking-service:/app/services/booking-service
+      - /app/services/booking-service/node_modules
     depends_on:
       booking-mongodb:
+        condition: service_started
+      ml-redis:
         condition: service_started
       kafka:
         condition: service_started
     networks:
       - cab-services
       - booking-data
+      - ml-platform-data
       - cab-broker
 
   auth-service:
@@ -96,6 +109,56 @@ services:
       - auth-data
       - cab-broker
 
+  matching-service:
+    build:
+      context: ../..
+      dockerfile: AI-ML/matching-service/Dockerfile
+    image: cab-matching-service:local
+    container_name: cab-matching-service
+    env_file:
+      - ../../AI-ML/matching-service/.env.docker
+    ports:
+      - "8000:8000"
+    volumes:
+      - cab_ml_model_store:/app/model_store
+    depends_on:
+      ml-mongodb:
+        condition: service_started
+      ml-redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - ml-platform-data
+      - cab-broker
+      - booking-data
+      - driver-data
+
+  surge-pricing-service:
+    build:
+      context: ../..
+      dockerfile: AI-ML/surge-pricing-service/Dockerfile
+    image: cab-surge-pricing-service:local
+    container_name: cab-surge-pricing-service
+    env_file:
+      - ../../AI-ML/surge-pricing-service/.env.docker
+    expose:
+      - "8001"
+    volumes:
+      - cab_surge_model_store:/app/model_store
+    depends_on:
+      ml-mongodb:
+        condition: service_started
+      ml-redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+    networks:
+      - cab-services
+      - ml-platform-data
+      - cab-broker
+
   pricing-service:
     build:
       context: ../..
@@ -106,14 +169,22 @@ services:
       - ../../services/pricing-service/.env.docker
     expose:
       - "3101"
+    volumes:
+      - ../../services/pricing-service:/app/services/pricing-service
+      - /app/services/pricing-service/node_modules
     depends_on:
       pricing-mongodb:
         condition: service_started
       kafka:
         condition: service_started
+      ml-redis:
+        condition: service_started
+      surge-pricing-service:
+        condition: service_started
     networks:
       - cab-services
       - pricing-data
+      - ml-platform-data   # đọc surge_zone:* keys từ Redis của ML Platform
       - cab-broker
 
   user-service:
@@ -168,10 +239,13 @@ services:
         condition: service_started
       kafka:
         condition: service_started
+      ml-redis:
+        condition: service_started
     networks:
       - cab-services
       - driver-data
       - cab-broker
+      - ml-platform-data   # ghi supply:zone:* keys vào Redis của ML Platform
 
   notification-service:
     build:
@@ -201,19 +275,55 @@ services:
     container_name: cab-ride-service
     env_file:
       - ../../services/ride-service/.env.docker
-    expose:
-      - "3109"
+    ports:
+      - "3109:3109"
     depends_on:
       ride-mongodb:
         condition: service_started
       ride-redis:
         condition: service_started
+      eta-service:
+        condition: service_started
       kafka:
         condition: service_started
+    volumes:
+      - ../../services/ride-service:/app/services/ride-service
+      - /app/services/ride-service/node_modules
     networks:
       - cab-services
       - ride-data
       - cab-broker
+
+  eta-service:
+    build:
+      context: ../..
+      dockerfile: AI-ML/eta-service/Dockerfile
+    image: cab-eta-service:local
+    container_name: cab-eta-service
+    env_file:
+      - ../../AI-ML/eta-service/.env.docker
+    expose:
+      - "3110"
+    depends_on:
+      eta-redis:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - cab-services
+      - eta-data
+      - cab-broker
+
+  # ── ETA AI Redis (hot-store for ETA cache & driver locations) ──────────────
+  eta-redis:
+    image: redis:7-alpine
+    container_name: cab-eta-redis
+    expose:
+      - "6379"
+    volumes:
+      - cab_eta_redis_data:/data
+    networks:
+      - eta-data
 
   payment-mongodb:
     image: mongo:7
@@ -291,6 +401,26 @@ services:
       - ../../database_test/pricing-seed.js:/docker-entrypoint-initdb.d/pricing-seed.js:ro
     networks:
       - pricing-data
+
+  ml-mongodb:
+    image: mongo:7
+    container_name: cab-ml-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - cab_ml_mongodb_data:/data/db
+    networks:
+      - ml-platform-data
+
+  ml-redis:
+    image: redis:7-alpine
+    container_name: cab-ml-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - cab_ml_redis_data:/data
+    networks:
+      - ml-platform-data
 
   booking-mongodb:
     image: mongo:7
@@ -383,7 +513,8 @@ services:
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic ride.status.changed --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.failed --partitions 1 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.success --partitions 1 --replication-factor 1 &&
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.completed --partitions 1 --replication-factor 1
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.completed --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic eta.result --partitions 1 --replication-factor 1
       "
     networks:
       - cab-broker
@@ -399,7 +530,12 @@ volumes:
   cab_notification_mongodb_data:
   cab_ride_mongodb_data:
   cab_ride_redis_data:
+  cab_eta_redis_data:
   cab_kafka_data:
+  cab_ml_mongodb_data:
+  cab_ml_redis_data:
+  cab_ml_model_store:
+  cab_surge_model_store:
 
 networks:
   cab-edge:
@@ -413,3 +549,5 @@ networks:
   driver-data:
   notification-data:
   ride-data:
+  ml-platform-data:
+  eta-data:

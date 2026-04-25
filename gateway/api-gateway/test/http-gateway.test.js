@@ -69,6 +69,9 @@ test("gateway verifies RS256 token via Auth JWKS, validates /me, then proxies pr
   assert.equal(response.body.data.query.view, "full");
   assert.equal(response.body.data.receivedHeaders["x-correlation-id"], "corr-123");
   assert.equal(response.body.data.receivedHeaders["x-request-id"], response.body.meta.requestId);
+  assert.equal(response.body.data.receivedHeaders["x-auth-user-id"], "customer-1");
+  assert.equal(response.body.data.receivedHeaders["x-auth-role"], "Customer");
+  assert.equal(response.body.data.receivedHeaders["x-auth-context-source"], "api-gateway");
   assert.equal(auth.meCalls.length, 1);
   assert.equal(auth.meCalls[0].headers["x-correlation-id"], "corr-123");
 });
@@ -248,6 +251,117 @@ test("RBAC blocks drivers from creating bookings after auth /me context is resol
     .expect(403);
 
   assert.equal(response.body.message, "You do not have permission to access this resource");
+});
+
+test("gateway enforces admin scope for listing users", async (t) => {
+  const auth = await createAuthServer();
+  const upstream = await createUpstreamServer(({ sendJson }) => {
+    sendJson(200, {
+      ok: true
+    });
+  });
+  t.after(async () => {
+    await upstream.close();
+    await auth.close();
+  });
+
+  const runtime = await createGatewayApp({
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url,
+      USER_SERVICE_URL: upstream.url
+    }),
+    storeMode: "memory"
+  });
+  t.after(async () => runtime.close());
+
+  const missingScopeToken = await auth.signToken({
+    sub: "admin-1",
+    role: "admin",
+    roles: ["admin"]
+  });
+
+  const forbidden = await request(runtime.app)
+    .get("/api/v1/users")
+    .set("Authorization", `Bearer ${missingScopeToken}`)
+    .expect(403);
+
+  assert.equal(forbidden.body.message, "Missing required scope for this resource");
+
+  const adminToken = await auth.signToken({
+    sub: "admin-1",
+    role: "admin",
+    roles: ["admin"],
+    scope: "admin:all"
+  });
+
+  await request(runtime.app)
+    .get("/api/v1/users")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+});
+
+test("gateway enforces location:update:assigned permission on ride location updates", async (t) => {
+  const auth = await createAuthServer();
+  const upstream = await createUpstreamServer(({ req, sendJson }) => {
+    sendJson(200, {
+      ok: true,
+      receivedHeaders: req.headers
+    });
+  });
+  t.after(async () => {
+    await upstream.close();
+    await auth.close();
+  });
+
+  const runtime = await createGatewayApp({
+    env: createEnv({
+      AUTH_SERVICE_URL: auth.url,
+      RIDE_SERVICE_URL: upstream.url
+    }),
+    storeMode: "memory"
+  });
+  t.after(async () => runtime.close());
+
+  const missingPermissionToken = await auth.signToken({
+    sub: "driver-1",
+    role: "driver",
+    roles: ["driver"]
+  });
+
+  const forbidden = await request(runtime.app)
+    .post("/api/v1/rides/ride-1/location")
+    .set("Authorization", `Bearer ${missingPermissionToken}`)
+    .send({
+      driverId: "driver-1",
+      currentLocation: {
+        lat: 10.77,
+        lng: 106.7
+      }
+    })
+    .expect(403);
+
+  assert.equal(forbidden.body.message, "Missing required permission for this resource");
+
+  const permittedToken = await auth.signToken({
+    sub: "driver-1",
+    role: "driver",
+    roles: ["driver"],
+    permissions: ["location:update:assigned"]
+  });
+
+  const allowed = await request(runtime.app)
+    .post("/api/v1/rides/ride-1/location")
+    .set("Authorization", `Bearer ${permittedToken}`)
+    .send({
+      driverId: "driver-1",
+      currentLocation: {
+        lat: 10.77,
+        lng: 106.7
+      }
+    })
+    .expect(200);
+
+  assert.equal(allowed.body.data.receivedHeaders["x-auth-permissions"], "location:update:assigned");
 });
 
 test("auth lifecycle routes remain public and proxy to auth-service", async (t) => {

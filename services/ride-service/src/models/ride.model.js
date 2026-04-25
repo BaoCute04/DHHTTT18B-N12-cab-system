@@ -3,16 +3,19 @@
  * Defines the structure of a Ride document
  */
 
-const { v4: uuidv4 } = require('uuid');
+import { v4 as uuidv4 } from 'uuid';
 
 // Ride Status Enum
-const RIDE_STATUS = {
+export const RIDE_STATUS = {
+  REQUESTED: 'REQUESTED',
   SEARCHING: 'SEARCHING',
-  DRIVER_ASSIGNED: 'DRIVER_ASSIGNED',
+  WAITING_FOR_ACCEPTANCE: 'WAITING_FOR_ACCEPTANCE',
+  ACCEPTED: 'ACCEPTED',
   DRIVER_ARRIVING: 'DRIVER_ARRIVING',
   IN_PROGRESS: 'IN_PROGRESS',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
+  FAILED_NO_DRIVER: 'FAILED_NO_DRIVER',
 };
 
 /**
@@ -26,7 +29,16 @@ class Ride {
     this.bookingId = data.bookingId;
     this.userId = data.userId;
     this.driverId = data.driverId || null;
-    this.status = data.status || RIDE_STATUS.SEARCHING;
+    this.status = data.status || RIDE_STATUS.REQUESTED;
+    
+    // Financial Data (Phase 2)
+    this.quoteId = data.quoteId || null;
+    this.priceSnapshot = data.priceSnapshot || 0;
+    this.distanceKm = data.distanceKm || 0;
+    this.rideType = data.rideType || 'bike';
+    this.paymentStatus = data.paymentStatus || 'PENDING';
+    this.paymentId = data.paymentId || null;
+
     this.pickup = data.pickup;
     this.destination = data.destination;
     this.currentLocation = data.currentLocation || null;
@@ -46,6 +58,12 @@ class Ride {
       userId: this.userId,
       driverId: this.driverId,
       status: this.status,
+      quoteId: this.quoteId,
+      priceSnapshot: this.priceSnapshot,
+      distanceKm: this.distanceKm,
+      rideType: this.rideType,
+      paymentStatus: this.paymentStatus,
+      paymentId: this.paymentId,
       pickup: this.pickup,
       destination: this.destination,
       currentLocation: this.currentLocation,
@@ -61,18 +79,15 @@ class Ride {
    */
   canTransitionTo(newStatus) {
     const validTransitions = {
-      [RIDE_STATUS.SEARCHING]: [RIDE_STATUS.DRIVER_ASSIGNED, RIDE_STATUS.CANCELLED],
-      [RIDE_STATUS.DRIVER_ASSIGNED]: [
-        RIDE_STATUS.DRIVER_ARRIVING,
-        RIDE_STATUS.CANCELLED,
-      ],
-      [RIDE_STATUS.DRIVER_ARRIVING]: [
-        RIDE_STATUS.IN_PROGRESS,
-        RIDE_STATUS.CANCELLED,
-      ],
+      [RIDE_STATUS.REQUESTED]: [RIDE_STATUS.SEARCHING, RIDE_STATUS.CANCELLED],
+      [RIDE_STATUS.SEARCHING]: [RIDE_STATUS.WAITING_FOR_ACCEPTANCE, RIDE_STATUS.FAILED_NO_DRIVER, RIDE_STATUS.CANCELLED],
+      [RIDE_STATUS.WAITING_FOR_ACCEPTANCE]: [RIDE_STATUS.ACCEPTED, RIDE_STATUS.SEARCHING, RIDE_STATUS.CANCELLED],
+      [RIDE_STATUS.ACCEPTED]: [RIDE_STATUS.DRIVER_ARRIVING, RIDE_STATUS.CANCELLED],
+      [RIDE_STATUS.DRIVER_ARRIVING]: [RIDE_STATUS.IN_PROGRESS, RIDE_STATUS.CANCELLED],
       [RIDE_STATUS.IN_PROGRESS]: [RIDE_STATUS.COMPLETED, RIDE_STATUS.CANCELLED],
       [RIDE_STATUS.COMPLETED]: [],
       [RIDE_STATUS.CANCELLED]: [],
+      [RIDE_STATUS.FAILED_NO_DRIVER]: [RIDE_STATUS.SEARCHING, RIDE_STATUS.CANCELLED],
     };
 
     return (validTransitions[this.status] || []).includes(newStatus);
@@ -92,7 +107,6 @@ class Ride {
   }
 }
 
-module.exports = {
+export {
   Ride,
-  RIDE_STATUS,
 };
