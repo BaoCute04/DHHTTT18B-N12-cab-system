@@ -5,7 +5,8 @@
   "workspaces": [
     "apps/*",
     "gateway/*",
-    "services/*"
+    "services/*",
+    "AI-ML/*"
   ],
   "scripts": {
     "dev:admin": "npm run dev --workspace @cab/admin-dashboard",
@@ -21,10 +22,14 @@
     "dev:driver-service": "npm run dev --workspace @cab/driver-service",
     "dev:notification": "npm run dev --workspace @cab/notification-service",
     "dev:ride": "npm run dev --workspace @cab/ride-service",
+    "dev:eta": "npm run dev --workspace @cab/eta-ai-service",
     "inspect:topology": "node ./platform/architecture/print-topology.js",
     "inspect:ai": "node ./platform/architecture/print-ai-topology.js",
     "inspect:realtime": "node ./platform/architecture/print-realtime-topology.js",
     "inspect:security": "node ./platform/architecture/print-security-topology.js",
     "inspect:resilience": "node ./platform/architecture/print-resilience-topology.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
   }
 }
